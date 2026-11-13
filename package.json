@@ -1,0 +1,8 @@
+{
+  "name": "sheisters",
+  "version": "1.0.0",
+  "description": "SHEISTERS — a 4-player New York City heist game",
+  "private": true,
+  "scripts": { "start": "node serve.js" },
+  "engines": { "node": ">=18" }
+}
