@@ -1,6 +1,7 @@
 'use strict';
-/* SHEISTERS — a 4-player top-down heist game set in New York City.
-   Single-screen co-op: 2 keyboard seats + gamepads, AI fills the rest. */
+/* SHEISTERS — a 4-player third-person heist shooter set in New York City.
+   The rules run on a flat 2D grid here; view3d.js draws them as a 3D scene.
+   One player per computer, online co-op for up to four, AI fills the rest. */
 
 // ------------------------------------------------------------------ basics
 const W = 1280, H = 720, T = 32, COLS = 40, ROWS = 21, HUD = 48, PI = Math.PI;
@@ -94,46 +95,62 @@ const keys = {};
 const NET = { ws: null, role: null, id: null, status: '', inputs: {}, peers: new Set(), seats: [], fill: true, addrs: [], sfxQ: [], snapT: 0, inT: 0 };
 let EID = 0;
 let mode = 'title', tab = 'jobs', selJob = 'stickup', M = null;
-const seats = [null, null, null, null];     // {ctl:'kb1'|'kb2'|'pad', pad}
+const seats = [null, null, null, null];     // {ctl:'local'} for this computer, {ctl:'net', id} for online players
 let fillBots = true, crewDefs = [];
 
+// Each computer drives one crew member: mouse to aim (pointer lock), WASD to move, or a gamepad.
+const look = { yaw: -PI / 2, pitch: .42, locked: false, fire: false, pad: false };
+let LOCAL = null;
+const unlock = () => { if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock(); };
 addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  if (NET.role === 'guest') return;
-  if (mode === 'title') {
-    if (e.code === 'Space') join({ ctl: 'kb1' });
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') join({ ctl: 'kb2' });
-  } else if (mode === 'play' && M) {
-    if (e.code === 'Escape') M.paused = !M.paused;
-    if (e.code === 'KeyQ' && M.paused) { M.paused = false; if (!M.alarm && M.take === 0) renderHideout(); else finish(false, 'The crew gave themselves up.'); }
+  if (mode === 'play' && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  if (mode === 'play' && M && NET.role !== 'guest') {
+    if (e.code === 'KeyP') M.userPause = !M.userPause;
+    if (e.code === 'KeyQ' && !look.locked) { if (!M.alarm && M.take === 0) renderHideout(); else finish(false, 'The crew gave themselves up.'); }
   }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-
-function join(seat) {
-  if (NET.role === 'guest') return;
-  if (seats.some(s => s && s.ctl === seat.ctl && s.pad === seat.pad)) return;
-  const i = seats.indexOf(null); if (i < 0) return;
-  seats[i] = seat; renderTitle();
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; look.fire = false; });
+stage.addEventListener('mousedown', e => {
+  if (mode !== 'play') return;
+  if (!look.locked) { if (stage.requestPointerLock) stage.requestPointerLock(); return; }
+  if (e.button === 0) look.fire = true;
+});
+addEventListener('mouseup', e => { if (e.button === 0) look.fire = false; });
+document.addEventListener('pointerlockchange', () => { look.locked = document.pointerLockElement === stage; if (!look.locked) look.fire = false; });
+addEventListener('mousemove', e => {
+  if (!look.locked || mode !== 'play') return;
+  look.yaw += e.movementX * .0025;
+  look.pitch = clamp(look.pitch + e.movementY * .002, -.05, 1.25);
+});
+const NOIN = { mx: 0, my: 0, aim: null, shoot: false, act: false };
+function localInput(dt) {
+  let f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0), r = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+  let shoot = look.fire || !!keys.Space, act = !!(keys.KeyE || keys.KeyF);
+  const gp = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).find(Boolean);
+  look.pad = !!gp;
+  if (gp) {
+    const dz = v => Math.abs(v || 0) < .22 ? 0 : v, b = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+    f -= dz(gp.axes[1]); r += dz(gp.axes[0]);
+    look.yaw += dz(gp.axes[2]) * 2.8 * dt; look.pitch = clamp(look.pitch + dz(gp.axes[3]) * 1.6 * dt, -.05, 1.25);
+    shoot = shoot || b(7) || b(5); act = act || b(0) || b(2);
+  }
+  if (!look.locked && !gp) return { mx: 0, my: 0, aim: look.yaw, shoot: false, act: false };
+  const c = Math.cos(look.yaw), s = Math.sin(look.yaw);
+  return { mx: c * f - s * r, my: s * f + c * r, aim: look.yaw, shoot, act };
 }
-function pollPadsForJoin() {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  for (const gp of pads) if (gp && gp.buttons[0] && gp.buttons[0].pressed) join({ ctl: 'pad', pad: gp.index });
-}
-const NOIN = { mx: 0, my: 0, ax: 0, ay: 0, shoot: false, act: false };
 function readInput(c) {
   if (c.ctl === 'net') { const i = NET.inputs[c.id]; return i && performance.now() - i.at < 500 ? i : NOIN; }   // stale input = stand still
-  if (c.ctl === 'bot') return NOIN;
-  if (c.ctl === 'kb1') return { mx: (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), my: (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0), ax: 0, ay: 0, shoot: !!keys.Space, act: !!keys.KeyE };
-  if (c.ctl === 'kb2') return { mx: (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0), my: (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0), ax: 0, ay: 0, shoot: !!(keys.Enter || keys.NumpadEnter || keys.Slash), act: !!(keys.ShiftRight || keys.Period || keys.Numpad0) };
-  const gp = navigator.getGamepads ? navigator.getGamepads()[c.pad] : null;
-  if (!gp) return NOIN;
-  const dz = v => Math.abs(v) < .25 ? 0 : v, b = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
-  return { mx: dz(gp.axes[0] || 0) + (b(15) ? 1 : 0) - (b(14) ? 1 : 0), my: dz(gp.axes[1] || 0) + (b(13) ? 1 : 0) - (b(12) ? 1 : 0), ax: dz(gp.axes[2] || 0), ay: dz(gp.axes[3] || 0), shoot: b(7) || b(5) || b(2), act: b(0) || b(6) };
+  if (c.ctl === 'local') return LOCAL || NOIN;
+  return NOIN;
 }
-const ctlLabel = s => NET.role === 'guest' ? (s.id === NET.id ? 'You' : s.ctl === 'net' ? 'Online player' : 'Host') : s.ctl === 'net' ? 'Online player' : s.ctl === 'kb1' ? 'Keyboard · WASD' : s.ctl === 'kb2' ? 'Keyboard · Arrows' : 'Gamepad ' + (s.pad + 1);
+const ctlLabel = s => NET.role === 'guest' ? (s.id === NET.id ? 'You' : s.ctl === 'net' ? 'Online player' : 'Host') : s.ctl === 'net' ? 'Online player' : 'This computer';
+// the crew member this computer controls (or watches)
+function me() {
+  if (!M) return null;
+  return (NET.role === 'guest' ? M.crew.find(c => c.id === NET.id) : M.crew.find(c => c.ctl === 'local')) || M.lead || M.crew[0];
+}
 
 // ------------------------------------------------------------------ level building
 function Lvl(plaza) {
@@ -279,7 +296,8 @@ function startJob(job) {
   });
   const ex = []; for (let y = 0; y < ROWS; y++) { ex.push([0, y]); ex.push([COLS - 1, y]); }
   M.fExit = bfs(ex);
-  refreshFields(); drawMap();
+  refreshFields(); drawMap(); View.build(M);
+  hud.hp = null; look.pitch = .42; look.yaw = -PI / 2;
   mode = 'play'; ui.innerHTML = '';
   say(job.name + ' — ' + job.hood);
   if (NET.role === 'host') netSend(startMsg());
@@ -341,7 +359,7 @@ function botInput(c) {
     const d = fieldDir(c, M.fLead);
     if (d) { mx = d[0]; my = d[1]; } else { mx = lead.x - c.x; my = lead.y - c.y; }
   }
-  return { mx, my, ax: 0, ay: 0, shoot: !!tgt && (!w.melee || dist(c, tgt) < w.range + 8), act: false };
+  return { mx, my, aim: null, shoot: !!tgt && (!w.melee || dist(c, tgt) < w.range + 8), act: false };
 }
 function updCrew(c, dt) {
   if (c.down) {
@@ -353,10 +371,19 @@ function updCrew(c, dt) {
   const inp = c.human ? readInput(c) : botInput(c), w = WEAPONS[c.weapon];
   let mx = inp.mx, my = inp.my; const l = Math.hypot(mx, my); if (l > 1) { mx /= l; my /= l; }
   move(c, mx * 150 * dt, my * 150 * dt);
-  const tgt = nearestHostile(c, w.melee ? 70 : w.range, !c.human);
-  if (Math.hypot(inp.ax, inp.ay) > .4) c.a = Math.atan2(inp.ay, inp.ax);
-  else if (tgt) c.a = Math.atan2(tgt.y - c.y, tgt.x - c.x);
-  else if (l > .1) c.a = Math.atan2(my, mx);
+  if (inp.aim != null) {                       // players aim with the camera; a little magnetism helps shots land
+    c.a = inp.aim;
+    let best = null, bd = w.melee ? .6 : .085;
+    for (const list of [M.cops, M.guards]) for (const e of list) {
+      if (e.dead) continue; const d = dist(c, e); if (d > (w.melee ? 70 : w.range)) continue;
+      const off = angDiff(Math.atan2(e.y - c.y, e.x - c.x), inp.aim);
+      if (off < bd && los(c.x, c.y, e.x, e.y)) { bd = off; best = e; }
+    }
+    if (best) c.a = Math.atan2(best.y - c.y, best.x - c.x);
+  } else {
+    const tgt = nearestHostile(c, w.melee ? 70 : w.range, !c.human);
+    if (tgt) c.a = Math.atan2(tgt.y - c.y, tgt.x - c.x); else if (l > .1) c.a = Math.atan2(my, mx);
+  }
   c.cd -= dt; if (inp.shoot && c.cd <= 0) fire(c);
   c.act = null; c.actCiv = null;
   if (c.human && inp.act) {
@@ -495,7 +522,7 @@ function update(dt) {
       b.x += b.vx * dt / steps; b.y += b.vy * dt / steps;
       if (b.x < 0 || b.y < 0 || b.x >= COLS * T || b.y >= ROWS * T || opaque(M.g[ty(b.y)][tx(b.x)])) { b.dead = true; M.fx.push({ type: 'spark', x: b.x, y: b.y, t: 0, life: .12, col: '#ffd27a' }); break; }
       if (b.crew) {
-        for (const list of [M.cops, M.guards]) for (const e of list) if (!e.dead && !b.dead && Math.hypot(e.x - b.x, e.y - b.y) < e.r + 2) { hurtEnemy(e, b.dmg); b.dead = true; }
+        for (const list of [M.cops, M.guards]) for (const e of list) if (!e.dead && !b.dead && Math.hypot(e.x - b.x, e.y - b.y) < e.r + 5) { hurtEnemy(e, b.dmg); b.dead = true; }
       } else for (const c of M.crew) if (!c.down && !b.dead && Math.hypot(c.x - b.x, c.y - b.y) < c.r + 1) {
         b.dead = true; c.hp -= b.dmg; c.hurtT = 0; M.shake = .12; sfx('hurt');
         if (c.hp <= 0) { c.down = true; c.rev = 0; c.act = null; c.actCiv = null; say(c.name + ' is down! Stand over them to revive.'); }
@@ -518,7 +545,7 @@ function update(dt) {
 
 // ------------------------------------------------------------------ results
 function finish(ok, why) {
-  M.over = true; mode = 'result';
+  M.over = true; mode = 'result'; unlock();
   const job = M.job, veh = M.veh.def, judge = S.bribes.judge ? .25 : 1, repBefore = S.rep;
   let rows = '', net = 0, notes = '';
   if (ok) {
@@ -604,147 +631,61 @@ function drawMap() {
   // signage
   c.font = '18px Impact, "Arial Narrow", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.shadowColor = '#ff3b6b'; c.shadowBlur = 12; c.fillStyle = '#ffe9a8';
-  c.fillText(job.sign, 20 * T, (job.street ? 5.5 : 13.5) * T);
   c.shadowBlur = 0;
+  View.groundDirty = true;
 }
 
-// ------------------------------------------------------------------ drawing: actors
-function dude(x, y, a, body, r, o) {
-  o = o || {};
-  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x + 2, y + 3, r, r, 0, 0, 7); ctx.fill();
-  ctx.save(); ctx.translate(x, y); ctx.rotate(a);
-  if (o.arms) { ctx.fillStyle = body; ctx.fillRect(-3, -r - 6, 6, 8); ctx.fillRect(-3, r - 2, 6, 8); }
-  if (o.gun) { ctx.fillStyle = '#0d0d0f'; ctx.fillRect(r * .3, r * .3, o.gun, 3.5); }
-  ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, r * .78, r * 1.05, 0, 0, 7); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.fillStyle = o.head || '#e0b48c'; ctx.beginPath(); ctx.arc(1, 0, r * .5, 0, 7); ctx.fill();
-  if (o.hat) { ctx.fillStyle = o.hat; ctx.beginPath(); ctx.arc(0, 0, r * .52, PI / 2, PI * 1.5); ctx.fill(); }
-  ctx.restore();
-}
+// ------------------------------------------------------------------ drawing: HUD over the 3D view
 function ring(x, y, r, p, col) {
   ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
-  ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, r, -PI / 2, -PI / 2 + p * PI * 2); ctx.stroke();
-}
-function drawCont(k) {
-  const x = k.x * T, y = k.y * T, cx = x + 16, cy = y + 16;
-  ctx.globalAlpha = k.open ? .4 : 1;
-  if (k.type === 'register') { ctx.fillStyle = '#39424a'; ctx.fillRect(x + 6, y + 6, 20, 20); ctx.fillStyle = '#5fd38d'; ctx.fillRect(x + 9, y + 9, 14, 6); }
-  else if (k.type === 'safe' || k.type === 'boxes') {
-    ctx.fillStyle = '#59616b'; ctx.fillRect(x + 3, y + 3, 26, 26); ctx.fillStyle = '#3a4048'; ctx.fillRect(x + 6, y + 6, 20, 20);
-    if (k.type === 'safe') { ctx.fillStyle = '#c9ced6'; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, 7); ctx.fill(); }
-    else { ctx.strokeStyle = '#7d858f'; ctx.lineWidth = 1; for (let i = 1; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x + 6 + i * 6.6, y + 6); ctx.lineTo(x + 6 + i * 6.6, y + 26); ctx.moveTo(x + 6, y + 6 + i * 6.6); ctx.lineTo(x + 26, y + 6 + i * 6.6); ctx.stroke(); } }
-  } else if (k.type === 'case') {
-    ctx.fillStyle = '#3b2f28'; ctx.fillRect(x + 2, y + 5, 28, 22); ctx.fillStyle = k.open ? '#22262b' : '#a8dcef'; ctx.fillRect(x + 4, y + 7, 24, 18);
-    if (!k.open) { ctx.fillStyle = '#fff'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 7 + i * 5, y + 11 + (i % 2) * 6, 2, 2); }
-  } else if (k.type === 'vault') {
-    if (k.open) { ctx.globalAlpha = 1; return; }
-    ctx.fillStyle = '#7b848f'; ctx.fillRect(x, y, T, T); ctx.fillStyle = '#aab3bd'; ctx.beginPath(); ctx.arc(cx, cy, 13, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#4d555e'; ctx.lineWidth = 3; ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = i * PI / 3 + M.t * (k.prog > 0 ? 1 : 0); ctx.moveTo(cx - Math.cos(a) * 11, cy - Math.sin(a) * 11); ctx.lineTo(cx + Math.cos(a) * 11, cy + Math.sin(a) * 11); } ctx.stroke();
-  } else if (k.type === 'cash') { ctx.fillStyle = '#6b5a45'; ctx.fillRect(x + 2, y + 2, 28, 28); ctx.fillStyle = '#4fae74'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 5 + (i % 2) * 12, y + 5 + (i >> 1) * 12, 10, 10); }
-  else if (k.type === 'gold') { ctx.fillStyle = '#5b5346'; ctx.fillRect(x + 2, y + 2, 28, 28); ctx.fillStyle = '#f2c230'; for (let i = 0; i < 3; i++) ctx.fillRect(x + 5, y + 5 + i * 8, 22, 6); ctx.fillStyle = '#fff3b0'; ctx.fillRect(x + 6, y + 6, 8, 2); }
-  else { ctx.fillStyle = '#8b6a3e'; ctx.fillRect(x + 3, y + 3, 26, 26); ctx.strokeStyle = '#5e4526'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, 24, 24); ctx.beginPath(); ctx.moveTo(x + 4, y + 4); ctx.lineTo(x + 28, y + 28); ctx.stroke(); }
-  ctx.globalAlpha = 1;
-  if (!k.open && k.prog > 0) ring(cx, cy - 26, 9, k.prog, '#f5c518');
-}
-function drawVehicle() {
-  const v = M.veh, d = v.def, can = M.take > 0 || M.alarm;
-  ctx.strokeStyle = can ? 'rgba(95,211,141,.75)' : 'rgba(255,255,255,.18)'; ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.lineDashOffset = -M.t * 20;
-  ctx.beginPath(); ctx.arc(v.x, v.y, 84, 0, 7); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(v.x - 44, v.y - 18, 94, 44);
-  if (S.vehicle === 'heli') {
-    ctx.fillStyle = d.color; ctx.beginPath(); ctx.ellipse(v.x, v.y, 34, 18, 0, 0, 7); ctx.fill(); ctx.fillRect(v.x - 70, v.y - 4, 44, 8);
-    ctx.fillStyle = '#9fd0e6'; ctx.beginPath(); ctx.ellipse(v.x + 16, v.y, 13, 12, 0, 0, 7); ctx.fill();
-    ctx.strokeStyle = 'rgba(220,220,220,.7)'; ctx.lineWidth = 3; const a = M.t * 14; ctx.beginPath(); ctx.moveTo(v.x - Math.cos(a) * 56, v.y - Math.sin(a) * 56); ctx.lineTo(v.x + Math.cos(a) * 56, v.y + Math.sin(a) * 56); ctx.stroke();
-  } else {
-    const long = S.vehicle === 'van' || S.vehicle === 'suv' ? 50 : 44;
-    ctx.fillStyle = d.color; ctx.beginPath(); ctx.roundRect(v.x - long, v.y - 20, long * 2, 40, 8); ctx.fill();
-    ctx.fillStyle = '#10131a'; ctx.fillRect(v.x + long - 34, v.y - 16, 14, 32); if (S.vehicle !== 'van') ctx.fillRect(v.x - long + 14, v.y - 16, 10, 32);
-    ctx.fillStyle = '#ffe9a8'; ctx.fillRect(v.x + long - 4, v.y - 17, 4, 7); ctx.fillRect(v.x + long - 4, v.y + 10, 4, 7);
-    ctx.fillStyle = '#e5383b'; ctx.fillRect(v.x - long, v.y - 17, 3, 7); ctx.fillRect(v.x - long, v.y + 10, 3, 7);
-  }
-  ctx.font = '13px Impact, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = can ? '#5fd38d' : 'rgba(255,255,255,.45)';
-  ctx.fillText(can ? 'GETAWAY — WHOLE CREW HERE' : 'GETAWAY', v.x, v.y + 42);
-  if (M.esc > 0) ring(v.x, v.y - 38, 12, M.esc / d.start, '#5fd38d');
+  ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, r, -PI / 2, -PI / 2 + clamp(p, 0, 1) * PI * 2); ctx.stroke();
 }
 function stars(n, x, y) {
   ctx.font = '22px Arial'; ctx.textAlign = 'left';
   for (let i = 0; i < 5; i++) { ctx.fillStyle = i < n ? '#f5c518' : '#3a3d48'; ctx.fillText('★', x + i * 22, y); }
 }
-function draw() {
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  ctx.save(); ctx.translate(M.shake > 0 ? rnd(-3, 3) : 0, HUD + (M.shake > 0 ? rnd(-3, 3) : 0));
-  ctx.drawImage(mapC, 0, 0);
-  for (const k of M.cont) drawCont(k);
-  drawVehicle();
-  // police lights
-  if (M.arrived) for (const side of [0, 1]) {
-    const x = side ? W - 62 : 6, y = 17 * T + 10, fl = Math.floor(M.t * 6 + side) % 2;
-    ctx.fillStyle = '#e9edf2'; ctx.beginPath(); ctx.roundRect(x, y, 56, 30, 6); ctx.fill(); ctx.fillStyle = '#1b3a8a'; ctx.fillRect(x + 16, y, 24, 30);
-    ctx.fillStyle = fl ? '#ff2b2b' : '#2b6bff'; ctx.fillRect(x + 24, y + 4, 8, 22);
-    const gr = ctx.createRadialGradient(x + 28, y + 15, 0, x + 28, y + 15, 220); gr.addColorStop(0, fl ? 'rgba(255,40,40,.35)' : 'rgba(40,100,255,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gr; ctx.fillRect(x - 200, y - 210, 460, 450);
-  }
-  // corpses / civilians
-  for (const e of M.cops.concat(M.guards)) if (e.dead) { ctx.globalAlpha = .5; dude(e.x, e.y, e.a + 1.5, '#333', e.r); ctx.globalAlpha = 1; }
-  for (const v of M.civs) {
-    dude(v.x, v.y, v.a, v.clerk ? '#3f8f5a' : v.color, v.r, { arms: v.state === 'hands' || v.state === 'cower', hat: '#4a3526' });
-    if (v.state === 'hands' && v.mug > 0) ring(v.x, v.y - 24, 8, v.mug, '#f5c518');
-    if (v.state === 'flee') { ctx.fillStyle = '#fff'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center'; ctx.fillText('!', v.x, v.y - 14); }
-    else if (M.job.street && v.cash > 0 && v.state === 'walk') { ctx.fillStyle = 'rgba(95,211,141,.8)'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.fillText('$', v.x, v.y - 14); }
-  }
-  for (const g of M.guards) {
-    if (g.dead) continue;
-    if (!g.hostile) {
-      ctx.fillStyle = g.det > 0 ? `rgba(255,${Math.round(200 - g.det * 160)},60,${.14 + g.det * .2})` : 'rgba(255,230,120,.1)';
-      ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.arc(g.x, g.y, 190, g.a - .87, g.a + .87); ctx.closePath(); ctx.fill();
-      if (g.det > 0) ring(g.x, g.y - 24, 8, g.det, '#e5383b');
-    }
-    dude(g.x, g.y, g.a, '#6d7480', g.r, { gun: 14, hat: '#22252b' });
-  }
-  for (const c of M.cops) if (!c.dead) dude(c.x, c.y, c.a, c.kind === 'swat' ? '#15171c' : '#1f3f9a', c.r, { gun: c.kind === 'swat' ? 18 : 13, hat: c.kind === 'swat' ? '#2a2d35' : '#0f2260', head: c.kind === 'swat' ? '#3a3d45' : undefined });
-  for (const c of M.crew) {
-    if (c.down) {
-      ctx.globalAlpha = .65; dude(c.x, c.y, c.a + 1.5, c.color, c.r, { arms: true }); ctx.globalAlpha = 1;
-      ctx.fillStyle = '#e5383b'; ctx.font = '12px Impact, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('DOWN', c.x, c.y - 18);
-      if (c.rev > 0) ring(c.x, c.y - 34, 8, c.rev / 3, '#fff');
-    } else {
-      dude(c.x, c.y, c.a, c.color, c.r, { gun: WEAPONS[c.weapon].melee ? 7 : 15, hat: '#17181d', head: '#17181d' });
-      ctx.fillStyle = c.color; ctx.font = '11px Impact, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(c.human ? 'P' + (c.slot + 1) : 'AI', c.x, c.y - 17);
-    }
-  }
-  // bullets & fx
-  for (const b of M.bullets) { ctx.strokeStyle = b.crew ? '#ffe9a8' : '#ff8b7a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * .018, b.y - b.vy * .018); ctx.stroke(); }
-  for (const f of M.fx) {
-    const p = f.t / f.life;
-    if (f.type === 'flash') { ctx.fillStyle = 'rgba(255,230,140,.9)'; ctx.beginPath(); ctx.arc(f.x, f.y, 7, 0, 7); ctx.fill(); }
-    else if (f.type === 'spark') { ctx.fillStyle = f.col; ctx.globalAlpha = 1 - p; ctx.beginPath(); ctx.arc(f.x, f.y, 3 + p * 8, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
-    else { ctx.strokeStyle = `rgba(255,255,255,${1 - p})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x, f.y, 30, f.a - 1 + p, f.a + .2 + p); ctx.stroke(); }
-  }
-  for (const t of M.texts) { ctx.globalAlpha = 1 - t.t / 1.4; ctx.fillStyle = t.col; ctx.font = '18px Impact, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(t.txt, t.x, t.y - t.t * 26); ctx.globalAlpha = 1; }
-  // interaction prompts
-  for (const c of M.crew) {
-    if (!c.human || c.down || c.act || c.actCiv) continue;
-    let lab = null, lx, ly;
-    for (const k of M.cont) if (!k.open && Math.hypot(tc(k.x) - c.x, tc(k.y) - c.y) < 58) { lab = k.label; lx = tc(k.x); ly = k.y * T - 6; }
-    if (!lab) for (const v of M.civs) if (!v.clerk && v.cash > 0 && dist(c, v) < 44) { lab = 'Stick up'; lx = v.x; ly = v.y - 26; }
-    if (lab) {
-      ctx.font = '12px "Segoe UI", sans-serif'; const tw = ctx.measureText('HOLD ACTION · ' + lab).width + 12;
-      ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(lx - tw / 2, ly - 16, tw, 18); ctx.fillStyle = '#f5c518'; ctx.textAlign = 'center'; ctx.fillText('HOLD ACTION · ' + lab, lx, ly - 3);
-    }
-  }
-  // vignette
-  const vg = ctx.createRadialGradient(W / 2, 336, 300, W / 2, 336, 800); vg.addColorStop(0, 'rgba(0,0,10,0)'); vg.addColorStop(1, 'rgba(0,0,10,.5)');
-  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, ROWS * T);
-  ctx.restore();
+const hud = { hp: null, flash: 0 };
+function draw(dt) {
+  dt = dt || 0;
+  const p = me();
+  View.render(M, p, dt);
+  ctx.clearRect(0, 0, W, H);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
+  if (View.failed) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#f2efe6'; ctx.font = '22px "Segoe UI", sans-serif'; ctx.fillText('This browser could not start 3D graphics (WebGL).', W / 2, H / 2); return; }
 
-  // ---- HUD
-  ctx.fillStyle = '#08090c'; ctx.fillRect(0, 0, W, HUD); ctx.fillStyle = '#2b2d36'; ctx.fillRect(0, HUD - 2, W, 2);
-  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  // ---- labels pinned to things in the world
+  for (const k of M.cont) if (!k.open && k.prog > 0) { const s = View.project(tc(k.x), tc(k.y), 3.3); if (s) ring(s.x, s.y, 13, k.prog, '#f5c518'); }
+  for (const v of M.civs) if (v.state === 'hands' && v.mug > 0) { const s = View.project(v.x, v.y, 2.7); if (s) ring(s.x, s.y, 11, v.mug, '#f5c518'); }
+  for (const g of M.guards) if (!g.dead && !g.hostile && g.det > 0) { const s = View.project(g.x, g.y, 2.8); if (s) ring(s.x, s.y, 11, g.det, '#e5383b'); }
+  for (const c of M.crew) {
+    const s = View.project(c.x, c.y, c.down ? 1.3 : 2.6); if (!s) continue;
+    if (c.down) { ctx.fillStyle = '#e5383b'; ctx.font = '16px Impact, sans-serif'; ctx.fillText(c.name.toUpperCase() + ' IS DOWN', s.x, s.y); if (c.rev > 0) ring(s.x, s.y - 26, 11, c.rev / 3, '#fff'); }
+    else if (c !== p) { ctx.fillStyle = c.color; ctx.font = '13px Impact, sans-serif'; ctx.fillText(c.name.toUpperCase(), s.x, s.y); }
+  }
+  for (const t of M.texts) { const s = View.project(t.x, t.y, 2.4 + t.t * 1.3); if (!s) continue; ctx.globalAlpha = clamp(1 - t.t / 1.4, 0, 1); ctx.fillStyle = t.col; ctx.font = '24px Impact, sans-serif'; ctx.fillText(t.txt, s.x, s.y); ctx.globalAlpha = 1; }
+  const can = M.take > 0 || M.alarm, vs = View.project(M.veh.x, M.veh.y, 3.6);
+  if (vs) {
+    ctx.font = '15px Impact, sans-serif'; ctx.fillStyle = can ? '#5fd38d' : 'rgba(255,255,255,.55)';
+    ctx.fillText(can ? 'GETAWAY — WHOLE CREW HERE' : 'GETAWAY', clamp(vs.x, 110, W - 110), clamp(vs.y, 70, H - 30));
+    if (M.esc > 0) ring(clamp(vs.x, 110, W - 110), clamp(vs.y, 70, H - 30) - 30, 13, M.esc / M.veh.def.start, '#5fd38d');
+  }
+
+  // ---- crosshair and damage flash
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(W / 2 - 12, H / 2); ctx.lineTo(W / 2 - 4, H / 2); ctx.moveTo(W / 2 + 4, H / 2); ctx.lineTo(W / 2 + 12, H / 2);
+  ctx.moveTo(W / 2, H / 2 - 12); ctx.lineTo(W / 2, H / 2 - 4); ctx.moveTo(W / 2, H / 2 + 4); ctx.lineTo(W / 2, H / 2 + 12); ctx.stroke();
+  if (p) { if (hud.hp !== null && p.hp < hud.hp - .5) hud.flash = .4; hud.hp = p.hp; }
+  hud.flash = Math.max(0, hud.flash - dt);
+  if (hud.flash > 0) { const g = ctx.createRadialGradient(W / 2, H / 2, 220, W / 2, H / 2, 760); g.addColorStop(0, 'rgba(229,56,59,0)'); g.addColorStop(1, `rgba(229,56,59,${hud.flash * 1.6})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+
+  // ---- top bar
+  ctx.fillStyle = 'rgba(8,9,12,.88)'; ctx.fillRect(0, 0, W, HUD); ctx.fillStyle = '#2b2d36'; ctx.fillRect(0, HUD - 2, W, 2);
+  ctx.textAlign = 'left';
   ctx.fillStyle = '#f5c518'; ctx.font = '22px Impact, sans-serif'; ctx.fillText(M.job.name.toUpperCase(), 14, 24);
   ctx.fillStyle = '#9a9ca8'; ctx.font = '11px "Segoe UI", sans-serif'; ctx.fillText(M.job.hood.toUpperCase(), 14, 40);
   M.crew.forEach((c, i) => {
     const x = 250 + i * 138;
-    ctx.fillStyle = c.color; ctx.font = '14px Impact, sans-serif'; ctx.fillText(c.name.toUpperCase() + (c.human ? '' : ' · AI'), x, 18);
+    ctx.fillStyle = c.color; ctx.font = '14px Impact, sans-serif'; ctx.fillText(c.name.toUpperCase() + (c === p ? ' · YOU' : c.human ? '' : ' · AI'), x, 18);
     ctx.fillStyle = '#23252d'; ctx.fillRect(x, 24, 120, 8);
     ctx.fillStyle = c.down ? '#e5383b' : c.color; ctx.fillRect(x, 24, 120 * (c.down ? c.rev / 3 : clamp(c.hp / c.maxhp, 0, 1)), 8);
     ctx.fillStyle = '#9a9ca8'; ctx.font = '10px "Segoe UI", sans-serif'; ctx.fillText(c.down ? 'DOWN' : WEAPONS[c.weapon].name, x, 43);
@@ -755,15 +696,47 @@ function draw() {
   else stars(M.stars, 830, 33);
   ctx.textAlign = 'right'; ctx.fillStyle = '#5fd38d'; ctx.font = '26px Impact, sans-serif'; ctx.fillText(money(M.take), W - 14, 27);
   const cap = M.veh.def.cap; ctx.fillStyle = M.take > cap ? '#e5383b' : '#9a9ca8'; ctx.font = '11px "Segoe UI", sans-serif'; ctx.fillText((M.take > cap ? 'OVER CAPACITY · ' : '') + 'VEHICLE HOLDS ' + money(cap), W - 14, 41);
+
+  // ---- minimap
+  const mw = 300, mh = mw * ROWS / COLS, mx = 14, my = H - mh - 14, sc = mw / (COLS * T);
+  ctx.globalAlpha = .88; ctx.drawImage(mapC, mx, my, mw, mh); ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#2b2d36'; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
+  const dot = (e, col, r) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(mx + e.x * sc, my + e.y * sc, r, 0, 7); ctx.fill(); };
+  for (const k of M.cont) if (!k.open) { ctx.fillStyle = '#f5c518'; ctx.fillRect(mx + tc(k.x) * sc - 3, my + tc(k.y) * sc - 3, 6, 6); }
+  ctx.strokeStyle = can ? '#5fd38d' : '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(mx + M.veh.x * sc, my + M.veh.y * sc, 84 * sc, 0, 7); ctx.stroke();
+  for (const v of M.civs) dot(v, v.cash > 0 && !v.clerk ? '#9fe0b4' : '#8d8f9a', 2.5);
+  for (const g of M.guards) if (!g.dead) {
+    if (!g.hostile) { ctx.fillStyle = 'rgba(255,220,90,.3)'; ctx.beginPath(); ctx.moveTo(mx + g.x * sc, my + g.y * sc); ctx.arc(mx + g.x * sc, my + g.y * sc, 190 * sc, g.a - .87, g.a + .87); ctx.fill(); }
+    dot(g, g.hostile ? '#e5383b' : '#c9ced6', 3.5);
+  }
+  for (const c of M.cops) if (!c.dead) dot(c, Math.floor(M.t * 5) % 2 ? '#4d8dff' : '#e5383b', 3.5);
+  for (const c of M.crew) {
+    dot(c, c.down ? '#7a2326' : c.color, c === p ? 5 : 4);
+    if (c === p) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mx + c.x * sc, my + c.y * sc); ctx.lineTo(mx + c.x * sc + Math.cos(look.yaw) * 12, my + c.y * sc + Math.sin(look.yaw) * 12); ctx.stroke(); }
+  }
+
+  // ---- prompts and banners
+  ctx.textAlign = 'center';
+  if (p && p.human && !p.down && !p.act && !p.actCiv) {
+    let lab = null;
+    for (const k of M.cont) if (!k.open && Math.hypot(tc(k.x) - p.x, tc(k.y) - p.y) < 58) lab = k.label;
+    if (!lab) for (const v of M.civs) if (!v.clerk && v.cash > 0 && dist(p, v) < 44) lab = 'Stick up';
+    if (lab) {
+      ctx.font = '18px Impact, sans-serif'; const tw = ctx.measureText('HOLD  E  ·  ' + lab.toUpperCase()).width + 30;
+      ctx.fillStyle = 'rgba(8,9,12,.82)'; ctx.fillRect(W / 2 - tw / 2, H / 2 + 60, tw, 34); ctx.fillStyle = '#f5c518'; ctx.fillText('HOLD  E  ·  ' + lab.toUpperCase(), W / 2, H / 2 + 84);
+    }
+  }
   if (M.msgT > 0) {
-    ctx.textAlign = 'center'; ctx.font = '30px Impact, sans-serif'; const w = ctx.measureText(M.msg).width + 40;
-    ctx.globalAlpha = Math.min(1, M.msgT); ctx.fillStyle = 'rgba(8,9,12,.85)'; ctx.fillRect(W / 2 - w / 2, 84, w, 46); ctx.fillStyle = '#f2efe6'; ctx.fillText(M.msg, W / 2, 118); ctx.globalAlpha = 1;
+    ctx.font = '30px Impact, sans-serif'; const w = ctx.measureText(M.msg).width + 40;
+    ctx.globalAlpha = clamp(M.msgT, 0, 1); ctx.fillStyle = 'rgba(8,9,12,.85)'; ctx.fillRect(W / 2 - w / 2, 84, w, 46); ctx.fillStyle = '#f2efe6'; ctx.fillText(M.msg, W / 2, 118); ctx.globalAlpha = 1;
   }
-  if (M.t < 9 && !M.alarm) { ctx.textAlign = 'center'; ctx.font = '13px "Segoe UI", sans-serif'; ctx.fillStyle = 'rgba(242,239,230,.75)'; ctx.fillText('Hold ACTION next to loot or a citizen · Guards have sight cones · Get the whole crew back to the vehicle · Esc to pause', W / 2, H - 10); }
-  if (M.paused) {
-    ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'center'; ctx.fillStyle = '#f5c518'; ctx.font = '72px Impact, sans-serif'; ctx.fillText('PAUSED', W / 2, 330);
-    ctx.fillStyle = '#f2efe6'; ctx.font = '18px "Segoe UI", sans-serif'; ctx.fillText('Esc — back to the job      Q — ' + (!M.alarm && M.take === 0 ? 'call it off and walk away' : 'surrender to the NYPD'), W / 2, 380);
-  }
+  if (M.t < 10 && !M.alarm) { ctx.font = '13px "Segoe UI", sans-serif'; ctx.fillStyle = 'rgba(242,239,230,.8)'; ctx.fillText('WASD move · Mouse aim · Left click attack · Hold E next to loot or a citizen · Stay out of the yellow sight cones · Esc frees the mouse', W / 2 + 150, H - 14); }
+  if (!look.locked && !look.pad) {
+    ctx.fillStyle = 'rgba(0,0,0,.62)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#f5c518'; ctx.font = '72px Impact, sans-serif'; ctx.fillText(M.paused ? 'PAUSED' : 'CLICK TO PLAY', W / 2, 320);
+    ctx.fillStyle = '#f2efe6'; ctx.font = '18px "Segoe UI", sans-serif';
+    ctx.fillText('Click the game to take control · WASD move · Mouse aim · Left click attack · Hold E for loot, stick-ups and safes', W / 2, 368);
+    if (NET.role !== 'guest') ctx.fillText('Q — ' + (!M.alarm && M.take === 0 ? 'call the job off and walk away' : 'surrender to the NYPD') + '      P — pause', W / 2, 400);
+  } else if (M.paused) { ctx.fillStyle = '#f5c518'; ctx.font = '48px Impact, sans-serif'; ctx.fillText('PAUSED — P to resume', W / 2, 300); }
 }
 
 // ------------------------------------------------------------------ menu backdrop
@@ -783,30 +756,29 @@ function drawSky(t) {
 
 // ------------------------------------------------------------------ menus
 function renderTitle() {
-  mode = 'title';
+  mode = 'title'; unlock();
   const guest = NET.role === 'guest', list = guest ? NET.seats : seats, fill = guest ? NET.fill : fillBots;
   const here = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) ? (NET.addrs.length ? NET.addrs.map(a => 'http://' + a).join('</b> or <b>') : "this server's address") : location.origin;
-  const online = guest ? `<div class="net"><b>You're in the crew.</b> Waiting for the host to start. You play with <kbd>WASD</kbd> <kbd>Space</kbd> <kbd>E</kbd> or a gamepad.</div>
+  const online = guest ? `<div class="net"><b>You're in the crew.</b> Waiting for the host to start.</div>
       <div class="row"><button class="btn ghost" data-a="leave">Leave crew</button></div>`
     : NET.role === 'host' ? `<div class="net"><b>Hosting online</b> · ${NET.peers.size} friend${NET.peers.size === 1 ? '' : 's'} connected. Friends open <b>${here}</b> and click “Join online game”.
       <button class="btn ghost sm" style="margin-left:10px" data-a="leave">Stop hosting</button></div>`
     : `<div class="row"><button class="btn ghost sm" data-a="hostOnline">Host online game</button><button class="btn ghost sm" data-a="joinOnline">Join online game</button></div>${NET.status ? `<div class="net">${NET.status}</div>` : ''}`;
   ui.innerHTML = `<div class="title">
-    <div style="text-align:center"><div class="logo">SHEISTERS</div><div class="tag">A New York City heist crew · 1–4 players</div></div>
+    <div style="text-align:center"><div class="logo">SHEISTERS</div><div class="tag">A New York City heist shooter · 1–4 players online</div></div>
     <div class="seats">${[0, 1, 2, 3].map(i => { const s = list[i]; return `<div class="seat ${s ? 'on' : ''}" style="--c:${CREW[i].color}"><h3>${CREW[i].name}</h3>
-      ${s ? `<p><b>Player ${i + 1}</b><br>${ctlLabel(s)}</p>${!guest && s.ctl !== 'net' ? `<button class="btn ghost sm" style="margin-top:8px" data-a="unseat" data-v="${i}">Leave</button>` : ''}`
-          : `<p>${fill ? '<b>AI crew member</b><br>' : 'Empty seat<br>'}${guest ? '' : 'Press a join key to take over'}</p>`}</div>`; }).join('')}</div>
-    ${guest ? '' : `<div class="keys"><kbd>Space</kbd> joins on WASD (<kbd>Space</kbd> attack, <kbd>E</kbd> action) &nbsp;·&nbsp; <kbd>Enter</kbd> joins on Arrows (<kbd>Enter</kbd> attack, <kbd>Right Shift</kbd> action)<br>
-      Gamepads: press <kbd>A</kbd> to join — left stick move, right stick aim, <kbd>RT</kbd> attack, <kbd>A</kbd> action</div>
-    <label class="check"><input type="checkbox" data-a="bots" ${fillBots ? 'checked' : ''}> Fill empty seats with AI crew</label>
-    <div class="row"><button class="btn" data-a="start" ${seats.some(Boolean) ? '' : 'disabled'}>${hasSave ? 'Continue' : 'Hit the streets'}</button>
+      ${s ? `<p><b>Player ${i + 1}</b><br>${ctlLabel(s)}</p>` : `<p>${fill ? '<b>AI crew member</b>' : 'Empty seat'}<br>${guest ? '' : 'Friends join online'}</p>`}</div>`; }).join('')}</div>
+    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; <kbd>Mouse</kbd> aim &nbsp;·&nbsp; <kbd>Left click</kbd> attack &nbsp;·&nbsp; hold <kbd>E</kbd> to stick up, loot and crack safes &nbsp;·&nbsp; <kbd>Esc</kbd> frees the mouse<br>
+      Gamepad: left stick move, right stick aim, <kbd>RT</kbd> attack, <kbd>A</kbd> action</div>
+    ${guest ? '' : `<label class="check"><input type="checkbox" data-a="bots" ${fillBots ? 'checked' : ''}> Fill empty seats with AI crew</label>
+    <div class="row"><button class="btn" data-a="start">${hasSave ? 'Continue' : 'Hit the streets'}</button>
       ${hasSave ? '<button class="btn ghost" data-a="newgame">New game</button>' : ''}</div>`}
     ${online}
   </div>`;
   netUI();
 }
 function renderHideout() {
-  mode = 'hideout';
+  mode = 'hideout'; unlock();
   if (NET.role !== 'guest' && seats.some(Boolean)) syncCrew();
   const heatLbl = S.heat < 30 ? 'Cool' : S.heat < 60 ? 'Warm' : S.heat < 80 ? 'Hot' : 'Scorching';
   const veh = VEHICLES[S.vehicle];
@@ -873,7 +845,6 @@ function act(a, v) {
   if (a === 'hostOnline') return netConnect(true);
   if (a === 'joinOnline') return netConnect(false);
   if (a === 'bots') { fillBots = !fillBots; renderTitle(); }
-  else if (a === 'unseat') { seats[+v] = null; renderTitle(); }
   else if (a === 'newgame') { S = freshSave(); hasSave = false; save(); renderTitle(); }
   else if (a === 'title') renderTitle();
   else if (a === 'start') {
@@ -922,7 +893,7 @@ function netConnect(asHost) {
     if (was === 'guest') {
       M = null; S = freshSave();
       try { const raw = localStorage.getItem(SAVE_KEY); if (raw) S = Object.assign(freshSave(), JSON.parse(raw)); } catch (e) { /* ignore */ }
-      seats.fill(null); seats[0] = { ctl: 'kb1' };
+      seats.fill(null); seats[0] = { ctl: 'local' };
       if (!NET.status) NET.status = 'Disconnected from the host.';
       return renderTitle();
     }
@@ -956,7 +927,7 @@ function onNet(m) {
       else { netUI(); if (mode === 'play' && m.on) netSend(Object.assign({ to: m.id }, startMsg())); }
     } else if (m.t === 'in' && Array.isArray(m.i)) {
       const i = m.i, n = v => clamp(+v || 0, -1, 1);
-      NET.inputs[m.from] = { mx: n(i[0]), my: n(i[1]), ax: n(i[2]), ay: n(i[3]), shoot: !!i[4], act: !!i[5], at: performance.now() };
+      NET.inputs[m.from] = { mx: n(i[0]), my: n(i[1]), aim: Number.isFinite(+i[2]) ? +i[2] : 0, shoot: !!i[3], act: !!i[4], at: performance.now() };
     } else if (m.t === 'act') {
       const a = String(m.a), v = m.v === undefined ? undefined : String(m.v);
       if (mode === 'result' && a === 'hideout') act(a);
@@ -972,14 +943,15 @@ function onNet(m) {
     S = Object.assign(freshSave(), m.S); selJob = m.selJob; crewDefs = m.crew || []; NET.seats = m.seats || []; NET.fill = !!m.fill;
     if (m.mode === 'title') { M = null; renderTitle(); }
     else if (m.mode === 'hideout') { M = null; renderHideout(); }
-    else if (m.mode === 'result') { mode = 'result'; ui.innerHTML = m.html; }
+    else if (m.mode === 'result') { mode = 'result'; unlock(); ui.innerHTML = m.html; }
   } else if (m.t === 'start') {
     const job = JOBS.find(j => j.id === m.job); if (!job) return;
     M = { job, g: m.g, cont: m.cont, guards: m.guards.map(p => ({ x: p[0], y: p[1], tx: p[0], ty: p[1], r: 11, a: 0, det: 0 })), civs: [], cops: [], bullets: [], fx: [], texts: [],
       crew: m.crew.map(c => Object.assign(c, { tx: c.x, ty: c.y, r: 11, a: -PI / 2, hp: c.maxhp, down: false, rev: 0 })),
       take: 0, alarm: false, eta: 0, arrived: false, stars: 0, esc: 0, t: 0, msg: '', msgT: 0, paused: false, over: false, shake: 0,
       veh: { x: tc(m.veh.x), y: tc(m.veh.y), def: VEHICLES[S.vehicle] || VEHICLES.rust } };
-    drawMap(); mode = 'play'; ui.innerHTML = '';
+    drawMap(); View.build(M); hud.hp = null; look.pitch = .42; look.yaw = -PI / 2;
+    mode = 'play'; ui.innerHTML = '';
   } else if (m.t === 'snap' && M && mode === 'play') applySnap(m);
 }
 function startMsg() {
@@ -1024,31 +996,33 @@ function guestTick(dt) {
   NET.inT -= dt;
   if (NET.inT <= 0) {
     NET.inT = 1 / 30;
-    const kb = readInput({ ctl: 'kb1' }), gp = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).find(Boolean), p = gp ? readInput({ ctl: 'pad', pad: gp.index }) : NOIN;
-    const R = v => Math.round(v * 100) / 100;
-    netSend({ t: 'in', i: [R(kb.mx + p.mx), R(kb.my + p.my), R(p.ax), R(p.ay), kb.shoot || p.shoot ? 1 : 0, kb.act || p.act ? 1 : 0] });
+    const R = v => Math.round(v * 1000) / 1000, i = LOCAL || NOIN;
+    netSend({ t: 'in', i: [R(i.mx), R(i.my), R(i.aim || 0), i.shoot ? 1 : 0, i.act ? 1 : 0] });
   }
 }
 
 let last = performance.now();
 function step(now, hidden) {
   const dt = Math.min(.05, Math.max(0, (now - last) / 1000)); last = now;
+  if (mode === 'play' && M) LOCAL = localInput(dt);
   if (NET.role === 'guest') {
-    if (mode === 'play' && M) { guestTick(dt); if (!hidden) draw(); } else if (!hidden) drawSky(now / 1000);
+    if (mode === 'play' && M) { guestTick(dt); if (!hidden) draw(dt); } else if (!hidden) drawSky(now / 1000);
     return;
   }
   if (mode === 'play') {
+    M.paused = !!M.userPause || (!look.locked && !look.pad && !NET.peers.size);   // solo games pause while the mouse is free
     update(dt);
     if (NET.role === 'host' && mode === 'play') { NET.snapT -= dt; if (NET.snapT <= 0) { NET.snapT = .05; if (NET.peers.size) netSend(snap()); } }
-    if (mode === 'play' && !hidden) draw();
-  } else if (!hidden) { if (mode === 'title') pollPadsForJoin(); drawSky(now / 1000); }
+    if (mode === 'play' && !hidden) draw(dt);
+  } else if (!hidden) drawSky(now / 1000);
 }
-function frame(now) { step(now, false); requestAnimationFrame(frame); }
-// Browsers pause animation frames in background tabs; keep an online game running if a player tabs away.
+let lastRaf = 0;
+function frame(now) { lastRaf = performance.now(); step(now, false); requestAnimationFrame(frame); }
+// Browsers pause animation frames in background or covered tabs; keep an online game running anyway.
 try {
   const ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),33)'])));
-  ticker.onmessage = () => { if (document.hidden && NET.role) step(performance.now(), true); };
+  ticker.onmessage = () => { if (NET.role && performance.now() - lastRaf > 150) step(performance.now(), true); };   // no frames lately: tab is hidden or covered
 } catch (e) { /* workers unavailable */ }
-seats[0] = { ctl: 'kb1' };
+seats[0] = { ctl: 'local' };
 renderTitle();
 requestAnimationFrame(frame);

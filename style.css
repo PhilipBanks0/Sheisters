@@ -14,7 +14,8 @@
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--paper); }
 #stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: center; transform: translate(-50%, -50%); }
-#game { display: block; width: 1280px; height: 720px; background: #000; }
+#gl, #game { position: absolute; left: 0; top: 0; display: block; width: 1280px; height: 720px; }
+#gl { background: #000; }
 #ui { position: absolute; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
 

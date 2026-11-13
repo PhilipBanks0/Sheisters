@@ -1,7 +1,7 @@
 {
   "name": "sheisters",
   "version": "1.0.0",
-  "description": "SHEISTERS — a 4-player New York City heist game",
+  "description": "SHEISTERS — a 4-player third-person New York City heist shooter",
   "private": true,
   "scripts": { "start": "node serve.js" },
   "engines": { "node": ">=18" }
