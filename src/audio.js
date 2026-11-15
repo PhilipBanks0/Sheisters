@@ -7,6 +7,7 @@ function ctx() {
   return ac;
 }
 export function unlockAudio() { ctx(); }
+export function setVol(v) { AUDIO.vol = v; if (master) master.gain.value = v; }
 function tone(f0, f1, dur, type, vol, delay) {
   const a = ctx(); if (!a) return; const t = a.currentTime + (delay || 0), o = a.createOscillator(), g = a.createGain();
   o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);

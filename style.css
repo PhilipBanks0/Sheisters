@@ -63,3 +63,7 @@ input:not([type=checkbox]) { background: #0c0d13; border: 1px solid var(--line);
 .calls { left: 50%; bottom: 60px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; font-size: 13px; columns: 2; } .calls h4 { font-size: 11px; letter-spacing: .2em; color: var(--gold); column-span: all; margin-bottom: 4px; } .calls div { margin: 3px 0; }
 .down { left: 50%; top: 30%; transform: translateX(-50%); font: 700 44px Georgia, serif; color: var(--red); text-align: center; } .down small { display: block; font: 15px system-ui; color: var(--paper); }
 .click { left: 50%; top: 44%; transform: translateX(-50%); background: var(--gold); color: #111; padding: 8px 16px; border-radius: 4px; font-weight: 700; text-shadow: none !important; }
+
+/* film look: vignette + faint scanlines over the 3D view */
+#fx { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.55) 100%), repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 1px, rgba(0,0,0,0) 1px 3px); mix-blend-mode: multiply; }
+.set { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 8px; } .set label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); margin: 6px 0; } .set input { width: 130px; accent-color: var(--gold); }

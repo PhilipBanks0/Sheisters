@@ -1,6 +1,7 @@
 // SHEISTERS — the 3D view. Everything is built in code: no model or texture downloads.
 import { L } from './level.js';
 import { CREW } from './data.js';
+import { decorate } from './decor.js';
 const T = window.THREE;
 
 export const R = { scene: null, cam: null, gl: null, chars: new Map(), fx: [], t: 0 };
@@ -137,7 +138,9 @@ export function buildScene() {
   R.bagGeo = new T.BoxGeometry(.62, .34, .38); R.bagMat = new T.MeshStandardMaterial({ color: 0x2a2f24, roughness: .9 }); R.bags = new Map();
   R.tracerMat = new T.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: .9 });
   R.drill = new T.Mesh(new T.BoxGeometry(.7, .35, .3), new T.MeshStandardMaterial({ color: 0xc8a020, roughness: .4, metalness: .6, emissive: 0x402000 })); R.drill.position.set(-4.5, -2.8, -15.5); R.drill.visible = false; sc.add(R.drill);
-  for (const it of L.inter) if (it.type === 'reader') { const m = new T.Mesh(new T.BoxGeometry(.08, .3, .2), new T.MeshStandardMaterial({ color: 0x222222, emissive: 0xff2020, emissiveIntensity: 1 })); m.position.set(-4.82, -2.6, it.z); sc.add(m); (R.readers = R.readers || []).push(m); }
+  R.decor = decorate(sc, { glow, canvasTex, label });
+  R.readers = [];
+  for (const it of L.inter) if (it.type === 'reader') { const m = new T.Mesh(new T.BoxGeometry(.08, .3, .2), new T.MeshStandardMaterial({ color: 0x222222, emissive: 0xff2020, emissiveIntensity: 1 })); m.position.set(-4.82, -2.6, it.z); sc.add(m); R.readers.push(m); }
 }
 function glow(pos, col, size) { const s = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: .5, depthWrite: false, blending: T.AdditiveBlending })); s.scale.set(size, size, 1); s.position.copy(pos); R.scene.add(s); return s; }
 let _glow; function glowTex() { return _glow || (_glow = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); })); }
@@ -151,8 +154,13 @@ function makeChar(spec) {
   const limb = (w, h, c, x, y) => { const p = new T.Group(); p.position.set(x, y, 0); const m = new T.Mesh(new T.BoxGeometry(w, h, w), lam(c)); m.position.y = -h / 2; m.castShadow = true; p.add(m); body.add(p); return p; };
   const o = { g, body, spec };
   o.legL = limb(.19, .82, spec.pants, -.13, .84); o.legR = limb(.19, .82, spec.pants, .13, .84);
+  for (const lg of [o.legL, o.legR]) { const sh = new T.Mesh(new T.BoxGeometry(.2, .1, .32), lam(0x0e0e10)); sh.position.set(0, -.8, .06); lg.add(sh); }
   o.torso = box(.52, .66, .28, spec.coat, 0, 1.17, 0);
+  if (spec.player) { box(.56, .4, .3, spec.coat, 0, .7, -.01); box(.56, .07, .31, 0x15130f, 0, .9, 0); box(.5, .09, .3, spec.hatCol, 0, 1.5, -.02); }
+  if (spec.badge) { box(.07, .08, .02, 0xe8c040, -.13, 1.33, .15); box(.54, .07, .3, 0x0e0e10, 0, .86, 0); }
+  if (spec.tie) { box(.16, .4, .02, 0xe8e4d8, 0, 1.28, .14); box(.06, .34, .02, spec.tie, 0, 1.27, .155); }
   o.armL = limb(.15, .66, spec.coat, -.35, 1.46); o.armR = limb(.15, .66, spec.coat, .35, 1.46);
+  for (const ar of [o.armL, o.armR]) { const hd = new T.Mesh(new T.BoxGeometry(.13, .13, .13), lam(spec.skin || 0xd9a880)); hd.position.y = -.7; ar.add(hd); }
   o.head = box(.27, .29, .27, spec.skin || 0xd9a880, 0, 1.68, 0);
   if (spec.hat === 'cap') { box(.3, .1, .3, spec.hatCol, 0, 1.86, 0); box(.24, .03, .16, spec.hatCol, 0, 1.82, .2); }
   else if (spec.hat === 'helmet') box(.33, .22, .33, spec.hatCol, 0, 1.8, 0);
@@ -172,13 +180,14 @@ function makeChar(spec) {
 }
 function specFor(e, isPlayer) {
   if (isPlayer) { const c = CREW[e.ch % 4]; return { player: true, coat: c.coat, pants: 0x1c1c22, hat: 'fedora', hatCol: c.hat, long: e.cls === 'muscle' }; }
-  if (e.k === 'guard') return { coat: 0x7fa0c8, pants: 0x1c2438, hat: 'cap', hatCol: 0x1c2438 };
-  if (e.k === 'cop') return { coat: 0x1c2a52, pants: 0x141c38, hat: 'cap', hatCol: 0x141c38 };
+  if (e.k === 'guard') return { coat: 0x7fa0c8, pants: 0x1c2438, hat: 'cap', hatCol: 0x1c2438, badge: 1, skin: [0xd9a880, 0x9a6a4a, 0xe8c0a0][e.v % 3] };
+  if (e.k === 'cop') return { coat: 0x1c2a52, pants: 0x141c38, hat: 'cap', hatCol: 0x141c38, badge: 1, skin: [0xd9a880, 0x9a6a4a, 0xe8c0a0][e.v % 3] };
   if (e.k === 'swat') return { coat: 0x15171c, pants: 0x101216, hat: 'helmet', hatCol: 0x0c0d10, vest: 0x2a2e36, long: true };
   if (e.job === 1) return { coat: 0xe8e4d8, pants: 0x2a2a30, hat: 'hair', hatCol: 0x4a2a18, vest: 0x5a2a2a };
-  if (e.job === 2) return { coat: 0x555a66, pants: 0x444852, hat: 'hair', hatCol: 0x888888 };
-  const c = CIV[e.v % CIV.length]; return { coat: c[0], pants: c[1], hat: 'hair', hatCol: [0x2a1a10, 0x8a6a30, 0x111111, 0x6a3a1a][e.v % 4] };
+  if (e.job === 2) return { coat: 0x555a66, pants: 0x444852, hat: 'hair', hatCol: 0x888888, tie: 0x8a1a1a };
+  const c = CIV[e.v % CIV.length]; return { coat: c[0], pants: c[1], hat: 'hair', hatCol: [0x2a1a10, 0x8a6a30, 0x111111, 0x6a3a1a][e.v % 4], skin: [0xd9a880, 0x8a5a3a, 0xe8c0a0, 0xb88860][e.v % 4] };
 }
+const spec_player = o => o.spec.player;
 function pose(o, e, dt, kind, snap) {
   // kind: state string for npcs; for players derived
   const lying = kind === 'ko' || kind === 'dead' || kind === 'down', cower = kind === 'cower', sit = kind === 'sit', crouch = kind === 'crouch';
@@ -191,7 +200,9 @@ function pose(o, e, dt, kind, snap) {
   const sw = sp > .2 ? Math.sin(o.ph) * Math.min(.9, .25 + sp * .12) : 0;
   const B = o.body; let by = 0, rx = 0, legBend = 0;
   if (lying) { rx = -Math.PI / 2; by = .22; } else if (cower) { by = -.55; legBend = 1.3; } else if (sit) { by = -.38; legBend = 1.45; } else if (crouch) { by = -.38; legBend = .9; }
-  B.rotation.x += (rx - B.rotation.x) * k; B.position.y += (by - B.position.y) * k; B.position.z = lying ? -.9 : 0;
+  if (!lying && sp > .2) by += Math.abs(Math.sin(o.ph)) * .045 * Math.min(1, sp / 4);
+  if (spec_player(o)) o.head.rotation.x = lying ? 0 : -(e.pitch || 0) * .5;
+  B.rotation.x += (rx - B.rotation.x) * k; B.position.y += (by - B.position.y) * k; B.rotation.z = lying || sp < .2 ? 0 : Math.sin(o.ph) * .03; B.position.z = lying ? -.9 : 0;
   o.legL.rotation.x = -legBend + sw; o.legR.rotation.x = -legBend - sw;
   o.torso.rotation.x = cower ? .5 : 0;
   if (cower) { o.armL.rotation.x = o.armR.rotation.x = -2.6; }
@@ -245,6 +256,7 @@ export function renderFrame(S, me, dt, camState) {
   R.rain.position.set(camState.x, 0, camState.z); const rp = R.rain.geometry.attributes.position.array;
   for (let i = 1; i < rp.length; i += 6) { rp[i] -= dt * 26; rp[i + 3] -= dt * 26; if (rp[i] < 0) { rp[i] += 22; rp[i + 3] += 22; } } R.rain.geometry.attributes.position.needsUpdate = true;
   R.rain.visible = !(camState.x > -14 && camState.x < 14 && camState.z < 0 && camState.z > -20);
+  if (R.decor) R.decor.steam.forEach((sp, i) => { const u = (R.t * .35 + i / 5) % 1; sp.position.y = .3 + u * 4; sp.position.x = -3 + Math.sin(R.t + i) * .3 * u; sp.material.opacity = .2 * (1 - u); const sz = 1 + u * 3; sp.scale.set(sz, sz, 1); });
   for (let i = R.fx.length - 1; i >= 0; i--) { const f = R.fx[i]; if ((f.t -= dt) <= 0) { sc.remove(f.o); if (f.o.geometry) f.o.geometry.dispose(); R.fx.splice(i, 1); } }
   // camera
   R.cam.position.set(camState.x, camState.y, camState.z); R.cam.lookAt(camState.tx, camState.ty, camState.tz);

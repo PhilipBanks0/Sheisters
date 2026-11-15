@@ -3,12 +3,13 @@ import { L, groundAt, moveCircle, rayT } from './level.js';
 import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
 import { createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
-import { sfx, music, unlockAudio } from './audio.js';
+import { sfx, music, unlockAudio, setVol } from './audio.js';
 
 const $ = s => document.querySelector(s), ui = $('#ui'), hud = $('#hud'), hc = $('#hud2d'), g2 = hc.getContext('2d');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const G = { save: loadSave(), phase: 'title', role: null, id: 0, code: '', S: null, lobby: null, err: '', feed: [], bubbles: [], hurtT: 0, hint: '', hintT: 0 };
 const me = { id: 0, local: null, vy: 0, ammo: 0, reload: 0, cd: 0, snapT: 0, sendT: 0 };
+if (G.save.sens === undefined) G.save.sens = 1; if (G.save.vol === undefined) G.save.vol = .7; setVol(G.save.vol);
 window.G = G; window.ME = me; window.R_info = () => ({ calls: R.gl.info.render.calls, tris: R.gl.info.render.triangles });                                        // handy for testing from the console
 
 // ------------------------------------------------------------------ input
@@ -132,7 +133,7 @@ function control(dt) {
   const S = G.S, p = myP(); if (!p) return;
   if (!me.local) { me.local = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: -.05, cr: 0, mv: 0 }; me.ammo = CLASSES[p.cls].gun.mag; }
   const l = me.local, pad = readPad(dt), gun = CLASSES[p.cls].gun, P = IN.pressed, alive = p.dn === 0 && !S.over;
-  l.yaw -= IN.lx * .0023 + pad.lx; l.pitch = clamp(l.pitch - IN.ly * .0021 - pad.ly, -1.15, 1.0); IN.lx = IN.ly = 0;
+  const sens = G.save.sens; l.yaw -= (IN.lx * .0023 + pad.lx) * sens; l.pitch = clamp(l.pitch - (IN.ly * .0021 + pad.ly) * sens, -1.15, 1.0); IN.lx = IN.ly = 0;
   const fx = Math.sin(l.yaw), fz = Math.cos(l.yaw), rx = -fz, rz = fx, cp = Math.cos(l.pitch), sp = Math.sin(l.pitch);
   let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + pad.mx, my = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + pad.my; const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
   if (alive) {
@@ -272,6 +273,7 @@ function render() {
       ${[0, 1, 2, 3].map(i => { const q = lob.seats[i]; return q ? `<div class="seat"><b style="color:${CREW[i].color}">${esc(q.name)}</b>${q.id === G.id ? ' <em>(you)</em>' : ''}<span>${CLASSES[q.cls].name} · L${q.lvl}</span></div>` : `<div class="seat empty"><b>${lob.fill ? CREW[i].name + ' (AI)' : 'Empty seat'}</b><span>${lob.fill ? 'Holds the van, covers the street' : '—'}</span></div>`; }).join('')}
       ${host ? `<label class="chk"><input type="checkbox" data-a="fill" ${lob.fill ? 'checked' : ''}> Fill empty seats with AI partners</label>` : ''}
       <div class="cash">${money(s.cash)}<small>your stash · ${s.jobs} jobs pulled</small></div>
+      <div class="set"><label>Look sensitivity <input type="range" min=".3" max="2.5" step=".1" value="${s.sens}" data-s="sens"></label><label>Volume <input type="range" min="0" max="1" step=".05" value="${s.vol}" data-s="vol"></label></div>
       <button data-a="leave" class="ghost">Leave</button></section>
     <section class="col wide"><h3>YOUR ROLE</h3>
       <div class="classes">${CLASS_IDS.map(id => `<button data-a="cls" data-v="${id}" class="cls ${id === s.cls ? 'on' : ''}" style="--c:${CLASSES[id].color}"><b>${CLASSES[id].name}</b><span>${CLASSES[id].tag}</span><em>Level ${s.cl[id].lvl}</em></button>`).join('')}</div>
@@ -301,6 +303,7 @@ ui.addEventListener('click', e => {
   else if (a === 'start' && G.role !== 'guest') hostStart();
   else if (a === 'back') { G.phase = 'hideout'; G.S = null; music('menu'); sendMe(); if (G.role !== 'guest') pushLobby(); render(); }
 });
+ui.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.s; if (!k) return; G.save[k] = +e.target.value; if (k === 'vol') { setVol(G.save.vol); sfx('ping'); } saveSave(G.save); });
 function reward() {
   const o = G.S.over, s = G.save, p = myP(), cls = p ? p.cls : s.cls, c = s.cl[cls], lvl0 = c.lvl;
   s.cash += o.share; s.jobs += o.ok ? 1 : 0; c.xp += o.xp; while (c.lvl < 10 && c.xp >= xpFor(c.lvl)) { c.xp -= xpFor(c.lvl); c.lvl++; }

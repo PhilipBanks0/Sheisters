@@ -91,7 +91,7 @@ export function interInfo(S, it, p) {
       return { label: S.take > 0 ? 'Drive off with ' + money(S.take) : 'Call it off and drive away', time: 3 };
     case 'guard': {
       const n = it.n, fx = Math.sin(n.yaw), fz = Math.cos(n.yaw), dx = p.x - n.x, dz = p.z - n.z, d = Math.hypot(dx, dz) || 1;
-      if ((dx * fx + dz * fz) / d > .25) return { label: 'Get behind him', no: true };
+      if ((dx * fx + dz * fz) / d > .25) return p.mk || c === 'ghost' ? { label: 'Get behind him', no: true } : null;
       if (c === 'ghost' && n.card) return { label: 'Lift his keycard', time: has(p, 'fingers') ? 1.2 : 2.4, pick: true };
       let t = c === 'ghost' ? .7 : 2; if (has(p, 'sleeper')) t /= 2;
       return mask('Takedown') || { label: 'Takedown', time: t };
