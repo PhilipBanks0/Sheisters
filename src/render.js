@@ -136,6 +136,7 @@ export function buildScene() {
     body.position.y = .75; top.position.y = 1.5; const red = new T.PointLight(0xff2020, 0, 26, 1.4), blue = new T.PointLight(0x2040ff, 0, 26, 1.4); red.position.set(.5, 2.1, 0); blue.position.set(-.5, 2.1, 0);
     car.add(body, top, red, blue); car.position.set(x, 0, z); car.rotation.y = ry; R.cops.add(car); R.copLights.push([red, blue]); }
   R.bagGeo = new T.BoxGeometry(.62, .34, .38); R.bagMat = new T.MeshStandardMaterial({ color: 0x2a2f24, roughness: .9 }); R.bags = new Map();
+  R.crate = new T.Mesh(new T.BoxGeometry(1.5, .55, .8), new T.MeshStandardMaterial({ color: 0xd8a830, roughness: .3, metalness: .9, emissive: 0x3a2400, emissiveIntensity: .5 })); R.crate.castShadow = true; sc.add(R.crate);
   R.tracerMat = new T.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: .9 });
   R.drill = new T.Mesh(new T.BoxGeometry(.7, .35, .3), new T.MeshStandardMaterial({ color: 0xc8a020, roughness: .4, metalness: .6, emissive: 0x402000 })); R.drill.position.set(-4.5, -2.8, -15.5); R.drill.visible = false; sc.add(R.drill);
   R.decor = decorate(sc, { glow, canvasTex, label });
@@ -250,6 +251,8 @@ export function renderFrame(S, me, dt, camState) {
   R.camMeshes.forEach((c, i) => { const s = S.cams[i]; c.g.rotation.set(0, s.a, 0); c.g.rotateX(-L.cams[i].pitch); c.led.material.color.setHex(S.camsOff || S.jamT > S.t ? 0x222222 : s.d > .05 ? 0xffc020 : 0xff2020); });
   // bags
   for (const b of S.bags) { let m = R.bags.get(b.id); if (!m) { m = new T.Mesh(R.bagGeo, R.bagMat); m.castShadow = true; sc.add(m); R.bags.set(b.id, m); } m.visible = b.st === 0; if (b.st === 0) m.position.set(b.x, b.y + .17, b.z); }
+  R.crate.visible = S.crate.st === 0; R.crate.position.set(S.crate.x, S.crate.y + (S.crate.h.length === 2 ? .85 : .28), S.crate.z);
+  if (S.crate.h.length === 2) { const a = S.pl.find(p => p.id === S.crate.h[0]), b = S.pl.find(p => p.id === S.crate.h[1]); if (a && b) R.crate.rotation.y = Math.atan2(a.z - b.z, b.x - a.x); }
   // police lights, rain, fx
   R.cops.visible = S.loud && S.wave > 0;
   if (R.cops.visible) R.copLights.forEach((l, i) => { const f = Math.sin(R.t * 9 + i * 2) > 0; l[0].intensity = f ? 3.5 : 0; l[1].intensity = f ? 0 : 3.5; });

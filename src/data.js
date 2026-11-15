@@ -80,6 +80,7 @@ export const CALLOUTS = [
   ['Nice work', ['Beautiful. Just like I drew it up.', 'Now THAT is how it\'s done.', 'Good.', 'Ha! We\'re actually good at this!']],
 ];
 
+export const TASKS = { '': 'No assignment', chief: "Lift the chief's keycard", desk: "Get the manager's keycard", cams: 'Kill the cameras', crowd: 'Control the lobby', vault: 'Vault and drill', lookout: 'Lookout and pings', haul: 'Haul the loot' };
 export const xpFor = lvl => 60 + lvl * 45;
 
 const KEY = 'sheisters-save-v2';

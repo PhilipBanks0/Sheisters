@@ -1,6 +1,6 @@
 // SHEISTERS — client: menus, controls, networking, HUD, main loop.
 import { L, groundAt, moveCircle, rayT } from './level.js';
-import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
+import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
 import { createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
 import { sfx, music, unlockAudio, setVol } from './audio.js';
@@ -66,7 +66,7 @@ function onNet(m) {
       if (m.on) { G.lobby.seats.push({ id: m.from === undefined ? m.id : m.from, name: 'Crook', cls: 'ghost', lvl: 1, perks: [] }); }
       else { G.lobby.seats = G.lobby.seats.filter(s => s.id !== m.id); if (G.S) { const p = G.S.pl.find(p => p.id === m.id); if (p && !p.dn) { p.dn = 2; say(p.name + ' skipped town.', 'warn'); } } }
       pushLobby();
-    } else if (m.t === 'me') { const s = G.lobby.seats.find(s => s.id === m.from); if (s) { s.name = String(m.name || 'Crook').slice(0, 14); s.cls = CLASSES[m.cls] ? m.cls : 'ghost'; s.lvl = m.lvl | 0; s.perks = (m.perks || []).filter(x => typeof x === 'string').slice(0, 5); pushLobby(); } }
+    } else if (m.t === 'me') { const s = G.lobby.seats.find(s => s.id === m.from); if (s) { s.name = String(m.name || 'Crook').slice(0, 14); s.cls = CLASSES[m.cls] ? m.cls : 'ghost'; s.lvl = m.lvl | 0; s.perks = (m.perks || []).filter(x => typeof x === 'string').slice(0, 5); s.task = TASKS[m.task] ? m.task : ''; pushLobby(); } }
     else if (m.t === 'p' && G.S) { const p = G.S.pl.find(p => p.id === m.from); if (p && !p.dn && Array.isArray(m.v)) { [p.x, p.y, p.z, p.yaw, p.pitch, p.cr, p.mv] = m.v; p.it = m.it || null; } else if (p) p.it = null; }
     else if (m.t === 'ev' && G.S) playerEvent(G.S, G.S.pl.find(p => p.id === m.from), m.e || {});
   } else {
@@ -77,7 +77,7 @@ function onNet(m) {
 }
 function pushLobby() { G.lobby.seats.forEach((s, i) => s.ch = i); netSend({ t: 'lobby', lobby: G.lobby }); if (G.phase === 'hideout') render(); }
 function sendMe() {
-  const c = G.save.cl[G.save.cls], mine = { name: G.save.name || 'Crook', cls: G.save.cls, lvl: c.lvl, perks: c.perks };
+  const c = G.save.cl[G.save.cls], mine = { name: G.save.name || 'Crook', cls: G.save.cls, lvl: c.lvl, perks: c.perks, task: G.task || '' };
   if (G.role === 'guest') netSend(Object.assign({ t: 'me' }, mine));
   else { Object.assign(G.lobby.seats.find(s => s.id === G.id), mine); pushLobby(); }
 }
@@ -92,7 +92,7 @@ function startLobby(role, id, code) {
 function hostStart() {
   const f = FAVORS[G.lobby.favor]; if (G.save.cash < f.price) { G.lobby.favor = 'none'; return pushLobby(); }
   G.save.cash -= f.price; saveSave(G.save);
-  const seats = G.lobby.seats.map(s => ({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks }));
+  const seats = G.lobby.seats.map(s => ({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks, task: s.task || '' }));
   if (G.lobby.fill) { const used = new Set(seats.map(s => s.cls)); for (let i = seats.length; i < 4; i++) { const cls = CLASS_IDS.find(c => !used.has(c)) || 'muscle'; used.add(cls); seats.push({ id: 10 + i, name: CREW[i].name, ch: i, cls, perks: [], bot: true }); } }
   netSend({ t: 'start' });
   beginHeist(createState(seats, G.lobby.favor));
@@ -139,9 +139,10 @@ function control(dt) {
   if (alive) {
     if (P.KeyC || P.ControlLeft) l.cr = l.cr ? 0 : 1;
     const sprint = (keys.ShiftLeft || pad.sprint) && !l.cr && my > 0;
-    let sp0 = l.cr ? 2.1 : sprint ? 6.4 : 4.4; if (p.bags) sp0 *= p.cls === 'muscle' ? .92 : .68; if (p.cls === 'muscle' && p.ab > 0) sp0 *= 1.2; if (IN.aim || pad.aim) sp0 *= .6;
+    let sp0 = l.cr ? 2.1 : sprint ? 6.4 : 4.4; if (p.bags) sp0 *= p.cls === 'muscle' ? .92 : .68; if (p.body >= 0) sp0 *= .62; const onCrate = S.crate.st === 0 && S.crate.h.includes(p.id); if (onCrate) sp0 *= .5; if (p.cls === 'muscle' && p.ab > 0) sp0 *= 1.2; if (IN.aim || pad.aim) sp0 *= .6;
     const ox = l.x, oz = l.z;
     moveCircle(l, (fx * my + rx * mx) * sp0 * dt, (fz * my + rz * mx) * sp0 * dt, .35);
+    if (onCrate) { const dx = l.x - S.crate.x, dz = l.z - S.crate.z, d = Math.hypot(dx, dz), lim = S.crate.h.length === 2 ? 1.7 : 1.3; if (d > lim) { l.x = S.crate.x + dx / d * lim; l.z = S.crate.z + dz / d * lim; } }
     const g = groundAt(l.x, l.y, l.z);
     if (g < -50) { l.x = ox; l.z = oz; } else if (l.y > g + .03) { me.vy -= 22 * dt; l.y = Math.max(g, l.y + me.vy * dt); } else { me.vy = 0; l.y += (g - l.y) * Math.min(1, dt * 20); }
     l.mv = Math.hypot(l.x - ox, l.z - oz) / Math.max(dt, .001);
@@ -158,8 +159,10 @@ function control(dt) {
   const list = interList(S), pp = Object.assign({}, p, l), best = alive ? bestInter(S, pp, list) : null;
   G.best = best; l.it = null;
   if (alive) {
-    if ((keys.KeyE || pad.use) && best && !best.info.no) l.it = best.it.id;
-    if (P.KeyG) { if (!p.mk) { sendEv({ k: 'mask' }); G.masked = true; } else if (p.bags) sendEv({ k: 'drop' }); }
+    // one press, one job: holding E never rolls over into the next thing in reach
+    if (!(keys.KeyE || pad.use)) me.latch = null;
+    else { if (me.latch == null && best && !best.info.no) me.latch = best.it.id; if (best && !best.info.no && best.it.id === me.latch) l.it = me.latch; }
+    if (P.KeyG) { if (!p.mk) { sendEv({ k: 'mask' }); G.masked = true; } else if (p.bags || p.body >= 0 || S.crate.h.includes(p.id)) sendEv({ k: 'drop' }); }
     if (P.KeyQ) { if (p.abCd <= 0) sendEv({ k: 'abil' }); else hint('Not ready yet'); }
     if (P.KeyF) { if (p.mk) sendEv({ k: 'shout' }); else hint('Mask up first [G]'); }
     if (P.KeyR && me.ammo < gun.mag && me.reload <= 0) { me.reload = 1.5; sfx('unlock', .6); }
@@ -204,6 +207,8 @@ function drawHud(dt) {
   const mark = (x, y, z, txt) => { const s = project(x, y, z); if (s.ok && Math.hypot(x - l.x, z - l.z) > 4) tag(clamp(s.x, 60, W - 60), clamp(s.y, 40, Hh - 40), txt, '#f5c518'); };
   if (S.vault.open || S.loud) mark(L.van.x + 1, 2.6, L.van.z, 'VAN');
   if (S.vault.open && S.bags.some(b => b.st === 0)) mark(-9.5, -2.5, -16.5, 'LOOT');
+  if (S.vault.open && S.crate.st === 0) { const s = project(S.crate.x, S.crate.y + 1.4, S.crate.z); if (s.ok && Math.hypot(S.crate.x - l.x, S.crate.z - l.z) < 14) tag(s.x, s.y, 'GOLD CRATE · 2 crooks · $60,000', '#ffd24a'); }
+  if (p.body >= 0) { mark(16.1, 2, -21, 'STASH'); mark(-12.4, 2, -19.2, 'STASH'); }
   // speech bubbles
   for (const b of G.bubbles) { b.t -= dt; const e = b.p !== undefined ? S.pl.find(q => q.id === b.p) : S.npc.find(n => n.id === b.n); if (!e || (b.p === me.id)) continue; const s = project(e.x, e.y + 2.5, e.z); if (!s.ok || Math.hypot(e.x - l.x, e.z - l.z) > 30) continue; g2.globalAlpha = clamp(b.t, 0, 1); tag(s.x, s.y, b.s, '#111', 'rgba(245,238,220,.95)'); g2.globalAlpha = 1; }
   G.bubbles = G.bubbles.filter(b => b.t > 0);
@@ -230,12 +235,12 @@ function drawHud(dt) {
   const cards = (S.cards.a === p.id ? 1 : 0) + (S.cards.b === p.id ? 1 : 0);
   hud.innerHTML = `
     <div class="banner ${bc}">${esc(banner)}${!S.loud && det > .02 ? `<span class="det"><i style="width:${det * 100}%"></i></span>` : ''}</div>
-    <div class="obj"><h4>THE PLAN</h4>${objectives(S).map(o => `<div>${esc(o)}</div>`).join('')}</div>
+    <div class="obj"><h4>THE PLAN</h4>${p.task ? `<div class="task">YOUR JOB: ${esc(TASKS[p.task])}</div>` : ''}${objectives(S).map(o => `<div>${esc(o)}</div>`).join('')}</div>
     <div class="feed">${G.feed.map(f => `<div class="${f.c}" style="opacity:${clamp(f.t / 2, 0, 1)}">${esc(f.s)}</div>`).join('')}</div>
-    <div class="crew">${S.pl.map(q => `<div class="${q.dn ? 'dn' : ''}"><b style="color:${CREW[q.ch % 4].color}">${esc(q.name)}</b> <em>${CLASSES[q.cls].name}${q.bot ? ' · AI' : ''}</em>${q.bags ? ' 💰' : ''}${S.cards.a === q.id || S.cards.b === q.id ? ' 🔑' : ''}<span class="hp"><i style="width:${q.dn === 2 ? 0 : q.hp}%"></i></span>${q.dn === 1 ? '<u>DOWN ' + Math.ceil(q.dnT) + 's</u>' : q.dn === 2 ? '<u>IN CUFFS</u>' : ''}</div>`).join('')}</div>
+    <div class="crew">${S.pl.map(q => `<div class="${q.dn ? 'dn' : ''}"><b style="color:${CREW[q.ch % 4].color}">${esc(q.name)}</b> <em>${CLASSES[q.cls].name}${q.bot ? ' · AI' : ''}${q.task ? ' · ' + esc(TASKS[q.task]) : ''}</em>${q.bags ? ' 💰' : ''}${S.cards.a === q.id || S.cards.b === q.id ? ' 🔑' : ''}<span class="hp"><i style="width:${q.dn === 2 ? 0 : q.hp}%"></i></span>${q.dn === 1 ? '<u>DOWN ' + Math.ceil(q.dnT) + 's</u>' : q.dn === 2 ? '<u>IN CUFFS</u>' : ''}</div>`).join('')}</div>
     <div class="me"><div class="take">${money(S.take)}<small>in the van</small></div>
       <div class="bars"><span class="hp big"><i style="width:${p.hp}%"></i></span><span class="ar"><i style="width:${Math.min(100, p.ar)}%"></i></span></div>
-      <div class="gun">${p.mk ? `${esc(gun.name)} <b>${me.reload > 0 ? 'reloading' : me.ammo + ' / ' + gun.mag}</b>` : 'Hands in your pockets'}${cards ? ' · 🔑×' + cards : ''}${p.bags ? ' · 💰×' + p.bags + ' <small>[G] drop</small>' : ''}</div>
+      <div class="gun">${p.mk ? `${esc(gun.name)} <b>${me.reload > 0 ? 'reloading' : me.ammo + ' / ' + gun.mag}</b>` : 'Hands in your pockets'}${cards ? ' · 🔑×' + cards : ''}${p.bags ? ' · 💰×' + p.bags + ' <small>[G] drop</small>' : ''}${p.body >= 0 ? ' · carrying a body <small>[G] drop</small>' : ''}${S.crate.h.includes(p.id) ? ' · on the gold crate <small>[G] let go</small>' : ''}</div>
       <div class="abil ${p.abCd > 0 ? 'cd' : ''}"><b>Q</b> ${esc(cls.ability.name)} ${p.ab > 0 && p.cls !== 'mastermind' ? '· ACTIVE ' + Math.ceil(p.ab) + 's' : p.abCd > 0 ? '· ' + Math.ceil(p.abCd) + 's' : '· ready'}</div></div>
     ${prompt}
     ${keys.Tab || keys.KeyX ? `<div class="calls"><h4>CALLOUTS</h4>${CALLOUTS.map((c, i) => `<div><b>${i + 1}</b> ${c[0]}</div>`).join('')}<div><b>Z</b> / middle-click — ping</div><div><b>F</b> — shout the room down</div></div>` : '<div class="keys">WASD move · Shift run · C crouch · E use · G mask / drop bag · Q ability · F shout · Z ping · 1–6 callouts · hold Tab for list</div>'}
@@ -270,7 +275,7 @@ function render() {
   ui.innerHTML = `<div class="hide">
     <section class="col"><h3>THE CREW ${G.code ? `<span class="code">${G.code}</span>` : '<span class="code off">OFFLINE</span>'}</h3>
       ${G.code ? '<p class="dim">Give your partners this code. They pick “Join a crew”.</p>' : '<p class="dim">No server connection — solo job with AI partners.</p>'}
-      ${[0, 1, 2, 3].map(i => { const q = lob.seats[i]; return q ? `<div class="seat"><b style="color:${CREW[i].color}">${esc(q.name)}</b>${q.id === G.id ? ' <em>(you)</em>' : ''}<span>${CLASSES[q.cls].name} · L${q.lvl}</span></div>` : `<div class="seat empty"><b>${lob.fill ? CREW[i].name + ' (AI)' : 'Empty seat'}</b><span>${lob.fill ? 'Holds the van, covers the street' : '—'}</span></div>`; }).join('')}
+      ${[0, 1, 2, 3].map(i => { const q = lob.seats[i]; return q ? `<div class="seat"><b style="color:${CREW[i].color}">${esc(q.name)}</b>${q.id === G.id ? ' <em>(you)</em>' : ''}<span>${CLASSES[q.cls].name} · L${q.lvl}${q.task ? '<br>' + esc(TASKS[q.task]) : ''}</span></div>` : `<div class="seat empty"><b>${lob.fill ? CREW[i].name + ' (AI)' : 'Empty seat'}</b><span>${lob.fill ? 'Holds the van, covers the street' : '—'}</span></div>`; }).join('')}
       ${host ? `<label class="chk"><input type="checkbox" data-a="fill" ${lob.fill ? 'checked' : ''}> Fill empty seats with AI partners</label>` : ''}
       <div class="cash">${money(s.cash)}<small>your stash · ${s.jobs} jobs pulled</small></div>
       <div class="set"><label>Look sensitivity <input type="range" min=".3" max="2.5" step=".1" value="${s.sens}" data-s="sens"></label><label>Volume <input type="range" min="0" max="1" step=".05" value="${s.vol}" data-s="vol"></label></div>
@@ -285,10 +290,39 @@ function render() {
     <section class="col"><h3>THE JOB</h3><h4>First Empire Savings — Midtown</h4>
       <p class="dim">Five guards, four cameras, a lobby full of witnesses. The vault is in the basement behind two card readers that have to be turned <b>at the same time</b>. Chief Mahoney wears one keycard in the security room; the manager keeps the other in his desk upstairs. No cards? Bring the drill and bring patience.</p>
       <p class="dim">Walk in as customers and look around. Nothing counts until the masks go on.</p>
+      <button data-a="bp">Study the blueprint</button>
+      <h4>YOUR ASSIGNMENT</h4><select data-s="task">${Object.keys(TASKS).map(k => `<option value="${k}" ${k === (G.task || '') ? 'selected' : ''}>${esc(TASKS[k])}</option>`).join('')}</select>
       <h4>CALL IN A FAVOUR${host ? '' : ' (the boss decides)'}</h4>
       ${Object.keys(FAVORS).map(k => `<button data-a="fav" data-v="${k}" class="fav ${k === lob.favor ? 'on' : ''}" ${host && s.cash >= FAVORS[k].price ? '' : 'disabled'}><b>${esc(FAVORS[k].name)}</b> <em>${FAVORS[k].price ? money(FAVORS[k].price) : 'free'}</em><span>${esc(FAVORS[k].desc)}</span></button>`).join('')}
       ${host ? `<button data-a="start" class="big">Pull the job${fav.price ? ' (' + money(fav.price) + ')' : ''}</button>` : '<p class="wait">Waiting for the boss to start the job…</p>'}
       <p class="dim soon">Next scores being rebuilt: Corner Bodega · Pawn Shop · Jewelry Store · Armored Truck · Bullion Depository</p></section></div>`;
+  if (G.bp) blueprintOverlay();
+}
+// top-down plans drawn straight from the level geometry, so they can never be out of date
+const FLOORS = [['UPSTAIRS — offices', 3.5], ['GROUND — lobby, tellers, staff hall', 0], ['BASEMENT — vault', -4]];
+function drawBlueprint(cv, fy) {
+  const g = cv.getContext('2d'), sc = 13, ox = 21, oz = 22, X = x => (x + ox) * sc, Z = z => (z + oz) * sc;
+  g.fillStyle = '#0d2a4a'; g.fillRect(0, 0, cv.width, cv.height); g.strokeStyle = 'rgba(255,255,255,.06)';
+  for (let i = 0; i < cv.width; i += sc * 2) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, cv.height); g.stroke(); } for (let i = 0; i < cv.height; i += sc * 2) { g.beginPath(); g.moveTo(0, i); g.lineTo(cv.width, i); g.stroke(); }
+  for (const b of L.boxes) { if (b.floor || b.skyline || b.invis || b.y1 <= fy + .6 || b.y0 >= fy + 1.75 || b.mat === 'roof') continue;
+    g.fillStyle = b.door ? '#f5c518' : b.vault ? '#ff6a4a' : b.glass ? 'rgba(160,220,255,.6)' : b.van ? '#9fe8a0' : b.y1 - b.y0 < 1.5 ? 'rgba(200,225,255,.4)' : '#d8e8ff';
+    g.fillRect(X(b.x0), Z(b.z0), Math.max(2, (b.x1 - b.x0) * sc), Math.max(2, (b.z1 - b.z0) * sc)); }
+  g.fillStyle = 'rgba(200,225,255,.25)'; for (const r of L.ramps) if (Math.min(r.yA, r.yB) <= fy + .1 && Math.max(r.yA, r.yB) >= fy - .1) { g.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc); for (let x = r.x0; x < r.x1; x += .5) g.fillRect(X(x), Z(r.z0), 1, (r.z1 - r.z0) * sc); }
+  g.font = 'bold 11px system-ui'; g.textAlign = 'center';
+  const pin = (x, z, t, c) => { g.fillStyle = c; g.beginPath(); g.arc(X(x), Z(z), 5, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillText(t, X(x), Z(z) - 9); };
+  const on = y => Math.abs(y - fy) < 1.5;
+  L.guards.forEach(gd => { const r = gd.route; if (!on(r[0].y)) return; g.strokeStyle = 'rgba(255,90,90,.8)'; g.setLineDash([4, 4]); g.beginPath(); r.forEach((p, i) => i ? g.lineTo(X(p.x), Z(p.z)) : g.moveTo(X(p.x), Z(p.z))); if (r.length > 2) g.closePath(); g.stroke(); g.setLineDash([]); pin(r[0].x, r[0].z, gd.card ? 'CHIEF + KEYCARD' : 'GUARD', '#ff5a5a'); });
+  L.cams.forEach((c, i) => { if ([0, 0, -4, 0][i] !== fy) return; g.fillStyle = 'rgba(255,190,40,.12)'; g.beginPath(); g.moveTo(X(c.x), Z(c.z)); g.arc(X(c.x), Z(c.z), c.range * sc, Math.PI / 2 - c.yaw - .65 - c.sweep, Math.PI / 2 - c.yaw + .65 + c.sweep); g.fill(); pin(c.x, c.z, 'CAM', '#ffbe28'); });
+  if (fy === 0) { pin(-12.5, -18.6, 'CAMERA CONSOLE', '#4dc3ff'); pin(L.van.x + 3, L.van.z, 'VAN', '#5fd38d'); pin(0, 0, 'FRONT DOOR', '#fff'); pin(14, -16, 'ALLEY DOOR', '#fff'); pin(16.1, -21, 'DUMPSTER', '#aaa'); pin(-12.4, -19.2, 'LOCKER', '#aaa'); pin(0, -19, 'STAIRS DOWN', '#fff'); pin(9, -19, 'STAIRS UP', '#fff'); }
+  if (fy === 3.5) pin(-9, -16.5, "MANAGER'S DESK + KEYCARD", '#f5c518');
+  if (fy === -4) { pin(-5, -17.2, 'READER', '#f5c518'); pin(-5, -13.9, 'READER', '#f5c518'); pin(-9.5, -16.4, 'VAULT · 8 bags + gold crate', '#5fd38d'); pin(11.5, -17, 'DEPOSIT BOXES', '#5fd38d'); }
+}
+function blueprintOverlay() {
+  const d = document.createElement('div'); d.className = 'bp';
+  d.innerHTML = `<div class="bpin"><h3>FIRST EMPIRE SAVINGS — the janitor's drawings <button data-a="bp">Close</button></h3><div class="bprow">${FLOORS.map((f, i) => `<figure><canvas id="bp${i}" width="${i === 1 ? 572 : 390}" height="${i === 1 ? 430 : 130}"></canvas><figcaption>${f[0]}</figcaption></figure>`).join('')}</div>
+    <p class="dim"><b style="color:#ff5a5a">Red</b> guards and their rounds · <b style="color:#ffbe28">amber</b> camera arcs · <b style="color:#f5c518">gold</b> doors, keycards, readers · <b style="color:#5fd38d">green</b> the money and the way out. Stash bodies in the dumpster or the security-room locker.</p></div>`;
+  ui.appendChild(d);
+  FLOORS.forEach((f, i) => { const cv = d.querySelector('#bp' + i), g = cv.getContext('2d'); if (i !== 1) { g.translate(-78, -18); } drawBlueprint(cv, f[1]); });
 }
 ui.addEventListener('click', e => {
   const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v, s = G.save; unlockAudio(); sfx('click');
@@ -296,6 +330,7 @@ ui.addEventListener('click', e => {
   if (a === 'host') connect(true);
   else if (a === 'join') { const code = ($('#code').value || '').toUpperCase().trim(); if (code.length !== 4) { G.err = 'Crew codes are four letters.'; render(); } else connect(false, code); }
   else if (a === 'leave') toTitle();
+  else if (a === 'bp') { G.bp = !G.bp; render(); }
   else if (a === 'cls') { s.cls = v; saveSave(s); sendMe(); render(); }
   else if (a === 'perk') { const c = s.cl[s.cls]; if (perkPoints(c) > 0 && !c.perks.includes(v)) { c.perks.push(v); saveSave(s); sendMe(); render(); } }
   else if (a === 'fav' && G.role !== 'guest') { G.lobby.favor = v; pushLobby(); }
@@ -303,7 +338,7 @@ ui.addEventListener('click', e => {
   else if (a === 'start' && G.role !== 'guest') hostStart();
   else if (a === 'back') { G.phase = 'hideout'; G.S = null; music('menu'); sendMe(); if (G.role !== 'guest') pushLobby(); render(); }
 });
-ui.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.s; if (!k) return; G.save[k] = +e.target.value; if (k === 'vol') { setVol(G.save.vol); sfx('ping'); } saveSave(G.save); });
+ui.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.s; if (!k) return; if (k === 'task') { G.task = e.target.value; sendMe(); return; } G.save[k] = +e.target.value; if (k === 'vol') { setVol(G.save.vol); sfx('ping'); } saveSave(G.save); });
 function reward() {
   const o = G.S.over, s = G.save, p = myP(), cls = p ? p.cls : s.cls, c = s.cl[cls], lvl0 = c.lvl;
   s.cash += o.share; s.jobs += o.ok ? 1 : 0; c.xp += o.xp; while (c.lvl < 10 && c.xp >= xpFor(c.lvl)) { c.xp -= xpFor(c.lvl); c.lvl++; }

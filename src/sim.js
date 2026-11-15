@@ -19,7 +19,7 @@ export function createState(seats, favor) {
   seats.forEach((s, i) => {
     const sp = s.bot ? [[2.6, 4.6], [3.2, 8.2], [1.4, 6.6]][i % 3] : L.spawns[i % 4];
     S.pl.push({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks || [], bot: !!s.bot, x: sp[0], y: 0, z: sp[1], yaw: Math.PI, pitch: 0, cr: 0, mk: 0, mv: 0,
-      hp: 100, ar: s.cls === 'muscle' ? 60 + ((s.perks || []).includes('skin') ? 50 : 0) : 20, dn: 0, dnT: 0, bags: 0, ab: 0, abCd: 0, it: null, sh: -9, wind: 0 });
+      body: -1, task: s.task || '', hp: 100, ar: s.cls === 'muscle' ? 60 + ((s.perks || []).includes('skin') ? 50 : 0) : 20, dn: 0, dnT: 0, bags: 0, ab: 0, abCd: 0, it: null, sh: -9, wind: 0 });
   });
   const h = { npc: {}, bot: {}, tick: 0, nid: 0 };
   H.set(S, h);
@@ -33,6 +33,7 @@ export function createState(seats, favor) {
     h.npc[h.nid++] = { react: 0, cowT: 0, button: -1 };
   });
   L.vaultBags.forEach((b, i) => S.bags.push({ id: i, x: b[0], y: i >= 6 ? -3.3 : -4, z: b[1], st: 0, by: -1, v: 11000 + (i * 1733) % 5000 }));
+  S.crate = { x: L.crate.x, y: L.crate.y, z: L.crate.z, st: 0, h: [] };
   if (favor === 'sheet') for (const n of S.npc) if (n.k === 'guard') S.marks[n.id] = 1e9;
   syncLevel(S);
   return S;
@@ -48,8 +49,10 @@ export function interList(S) {
   for (const n of S.npc) {
     if (n.k === 'guard' && (n.st === 'idle' || n.st === 'walk' || n.st === 'sus')) out.push({ id: 'guard:' + n.id, type: 'guard', n, x: n.x, y: n.y + 1, z: n.z, r: 1.7 });
     else if (isBody(n) && n.card) out.push({ id: 'body:' + n.id, type: 'body', n, x: n.x, y: n.y + .3, z: n.z, r: 1.8 });
+    else if (isBody(n) && !n.hid && !(n.by >= 0)) out.push({ id: 'corpse:' + n.id, type: 'corpse', n, x: n.x, y: n.y + .3, z: n.z, r: 1.6 });
   }
   for (const b of S.bags) if (b.st === 0) out.push({ id: 'bag:' + b.id, type: 'bag', b, x: b.x, y: b.y + .3, z: b.z, r: 1.9 });
+  if (S.crate.st === 0 && S.vault.open) out.push({ id: 'crate', type: 'crate', x: S.crate.x, y: S.crate.y + .4, z: S.crate.z, r: 2.1 });
   for (const p of S.pl) if (p.dn === 1) out.push({ id: 'rev:' + p.id, type: 'rev', p, x: p.x, y: p.y + .4, z: p.z, r: 2 });
   return out;
 }
@@ -97,6 +100,10 @@ export function interInfo(S, it, p) {
       return mask('Takedown') || { label: 'Takedown', time: t };
     }
     case 'body': return { label: 'Take the keycard', time: .7 };
+    case 'corpse': if (p.body >= 0 || S.loud) return null; return mask('Carry the body') || { label: 'Pick up the body — stash it out of sight', time: .8 };
+    case 'stash': if (p.body < 0) return null; return { label: 'Stash the body in the ' + it.name, time: .6 };
+    case 'crate': if (S.crate.h.includes(p.id)) return null;
+      return mask('Lift the gold crate') || { label: S.crate.h.length ? 'Grab the other end of the gold crate' : 'Grab the gold crate — it takes two to carry', time: .4 };
     case 'bag': if (p.bags >= bagCap(p)) return { label: 'Hands full', no: true };
       return mask('Grab the bag') || { label: 'Grab the bag — ' + money(it.b.v), time: .5 };
     case 'rev': if (it.p.id === p.id) return null;
@@ -130,6 +137,7 @@ export function objectives(S) {
   } else {
     const left = S.bags.filter(b => b.st !== 2).length;
     o.push(left ? 'Haul the bags to the van (' + (S.bags.length - left) + '/' + S.bags.length + ')' : 'Every bag is in the van');
+    if (S.crate.st === 0) o.push('Bonus: two of you walk the gold crate out ($60,000)');
     o.push('Get the whole crew to the van and drive');
   }
   if (S.loud && !S.vault.open) o.push('Or cut your losses: get to the van');
@@ -160,9 +168,13 @@ function damage(S, p, dmg) {
   if (p.hp <= 0) {
     p.hp = 0; p.dn = 1; p.dnT = 40; p.it = null;
     for (const b of S.bags) if (b.st === 1 && b.by === p.id) { b.st = 0; b.by = -1; b.x = p.x; b.y = p.y; b.z = p.z; }
-    p.bags = 0;
+    p.bags = 0; if (p.body >= 0) dropBody(S, p); S.crate.h = S.crate.h.filter(i => i !== p.id);
     msg(S, p.name + ' is down!', 'bad'); sfx(S, 'down', p);
   }
+}
+function dropBody(S, p) {
+  const n = S.npc.find(n => n.id === p.body); p.body = -1; if (!n) return;
+  n.by = -1; n.x = p.x; n.z = p.z; const g = groundAt(n.x, p.y + .4, n.z); n.y = g > -50 ? g : p.y; sfx(S, 'thud', n);
 }
 function hurtNpc(S, n, dmg, by) {
   if (!UP[n.st]) return;
@@ -228,6 +240,8 @@ export function playerEvent(S, p, e) {
   }
   if (p.dn) return;
   if (e.k === 'mask' && !p.mk) { p.mk = 1; sfx(S, 'mask', p); return; }
+  if (e.k === 'drop' && S.crate.h.includes(p.id)) { S.crate.h = S.crate.h.filter(i => i !== p.id); sfx(S, 'thud', S.crate); return; }
+  if (e.k === 'drop' && p.body >= 0) { dropBody(S, p); return; }
   if (e.k === 'drop' && p.bags > 0) {
     const b = S.bags.find(b => b.st === 1 && b.by === p.id); if (!b) { p.bags = 0; return; }
     let x = p.x + Math.sin(p.yaw) * 1.6, z = p.z + Math.cos(p.yaw) * 1.6;
@@ -301,6 +315,9 @@ function interDone(S, it, info, p) {
       break;
     case 'body': it.n.card = 0; S.cards.a = p.id; msg(S, p.name + " took the chief's keycard.", 'good'); sfx(S, 'card', it); break;
     case 'bag': it.b.st = 1; it.b.by = p.id; p.bags++; sfx(S, 'bag', it); break;
+    case 'corpse': it.n.by = p.id; p.body = it.n.id; sfx(S, 'bag', it); break;
+    case 'stash': { const n = S.npc.find(n => n.id === p.body); if (n) { n.hid = 1; n.by = -1; } p.body = -1; msg(S, p.name + ' stashed a body in the ' + it.name + '.', 'good'); sfx(S, 'thud', it); break; }
+    case 'crate': if (S.crate.h.length < 2) { S.crate.h.push(p.id); sfx(S, 'bag', it); if (S.crate.h.length === 2) msg(S, 'Two on the crate. Walk it out together!', 'good'); } break;
     case 'rev': it.p.dn = 0; it.p.hp = has(p, 'feet') ? 100 : 50; msg(S, p.name + ' got ' + it.p.name + ' back up.', 'good'); sfx(S, 'abil', it); break;
   }
 }
@@ -329,6 +346,17 @@ export function update(S, dt) {
     }
     if (p.bot) botUpdate(S, h, p, dt);
     for (const b of S.bags) if (b.st === 1 && b.by === p.id) { b.x = p.x; b.y = p.y + 1.1; b.z = p.z; }
+    if (p.body >= 0) { const n = S.npc.find(n => n.id === p.body); if (n) { n.x = p.x - Math.sin(p.yaw) * .25; n.z = p.z - Math.cos(p.yaw) * .25; n.y = p.y + 1.0; n.yaw = p.yaw + Math.PI / 2; } }
+  }
+  // the gold crate: two carriers, it rides between them
+  const C = S.crate;
+  if (C.st === 0 && C.h.length) {
+    const hs = C.h.map(id => S.pl.find(p => p.id === id)).filter(p => p && !p.dn);
+    C.h = hs.filter(p => Math.hypot(p.x - C.x, p.z - C.z) < 3.2).map(p => p.id);
+    if (C.h.length === 2) {
+      C.x = (hs[0].x + hs[1].x) / 2; C.z = (hs[0].z + hs[1].z) / 2; const g = groundAt(C.x, Math.max(hs[0].y, hs[1].y) + .5, C.z); if (g > -50) C.y = g;
+      if (Math.hypot(C.x - L.van.x, C.z - L.van.z) < 3 && Math.abs(C.y) < .5) { C.st = 2; C.h = []; S.take += L.crate.v; ev(S, { k: 'cash', v: L.crate.v, x: C.x, y: 1.5, z: C.z }); msg(S, 'The gold crate is in the van!', 'good'); sfx(S, 'cash'); }
+    }
   }
   // ---- held interactions
   const list = interList(S), held = {};
