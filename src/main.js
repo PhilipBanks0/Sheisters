@@ -88,10 +88,10 @@ function sendMe() {
 
 // ------------------------------------------------------------------ flow
 function toTitle() { G.phase = 'title'; G.role = null; G.S = null; G.lobby = null; if (NET.ws) { const w = NET.ws; NET.ws = null; w.close(); } document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
-const NEED = { bodega: 0, jewel: 1, bank: 3 };
+const NEED = { bodega: 0, pawn: 1, jewel: 2, truck: 3, bank: 4 }, ORDER = ['bodega', 'pawn', 'jewel', 'truck', 'bank'];
 const unlocked = k => G.save.all || G.save.jobs >= NEED[k];
 function startLobby(role, id, code) {
-  if (role !== 'guest') { const best = ['bank', 'jewel', 'bodega'].find(unlocked); if (best !== L.job) setJob(best); }
+  if (role !== 'guest') { const best = ORDER.slice().reverse().find(unlocked); if (best !== L.job) setJob(best); }
   G.role = role; G.id = me.id = id; G.code = code; G.phase = 'hideout';
   G.lobby = { seats: role === 'guest' ? [] : [{ id, name: G.save.name || 'Crook', cls: G.save.cls, lvl: 1, perks: [], ch: 0 }], favor: 'none', fill: true, job: L.job };
   sendMe(); render();
@@ -329,7 +329,7 @@ function render() {
       <div class="xp"><i style="width:${c.lvl >= 10 ? 100 : c.xp / xpFor(c.lvl) * 100}%"></i><span>Level ${c.lvl}${c.lvl >= 10 ? ' (max)' : ' · ' + c.xp + ' / ' + xpFor(c.lvl) + ' XP'} · ${pts} skill point${pts === 1 ? '' : 's'}</span></div>
       <div class="perks">${C.perks.map(k => { const own = c.perks.includes(k.id); return `<button data-a="perk" data-v="${k.id}" class="perk ${own ? 'own' : pts ? 'can' : ''}" ${own || !pts ? 'disabled' : ''}><b>${esc(k.name)}</b><span>${esc(k.desc)}</span></button>`; }).join('')}</div>
       <p class="dim">A skill point every second level. Experience comes from the take — bigger and quieter jobs pay more.</p>`}</section>
-    <section class="col"><h3>THE JOB</h3><div class="jobs">${['bodega', 'jewel', 'bank'].map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 3 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
+    <section class="col"><h3>THE JOB</h3><div class="jobs">${ORDER.map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 4 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
       <p class="dim">${JOBS[lob.job || 'bank'].brief}</p>
       <p class="dim">Walk in as customers and look around. Nothing counts until the masks go on.</p>
       <button data-a="bp">Study the blueprint</button>
@@ -337,7 +337,7 @@ function render() {
       <h4>CALL IN A FAVOUR${host ? '' : ' (the boss decides)'}</h4>
       ${Object.keys(FAVORS).map(k => `<button data-a="fav" data-v="${k}" class="fav ${k === lob.favor ? 'on' : ''}" ${host && s.cash >= FAVORS[k].price ? '' : 'disabled'}><b>${esc(FAVORS[k].name)}</b> <em>${FAVORS[k].price ? money(FAVORS[k].price) : 'free'}</em><span>${esc(FAVORS[k].desc)}</span></button>`).join('')}
       ${host ? `<button data-a="start" class="big">Pull the job${fav.price ? ' (' + money(fav.price) + ')' : ''}</button>` : '<p class="wait">Waiting for the boss to start the job…</p>'}
-      <p class="dim soon">Next scores being rebuilt: Corner Bodega · Pawn Shop · Armored Truck · Bullion Depository</p></section></div>`;
+      <p class="dim soon">Still to come: Bullion Depository · Street Stickups</p></section></div>`;
   if (G.bp) blueprintOverlay();
 }
 function shopHtml() {

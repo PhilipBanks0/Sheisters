@@ -89,14 +89,19 @@ export function decorateJewel(sc, h) {
     add(new T.PlaneGeometry(3, 7.4), std(0x1a2a4a, { roughness: 1 }), 0, .012, -3.9, { rx: -Math.PI / 2 });
     add(new T.TorusGeometry(.32, .05, 8, 20), std(0xc9a03a, { roughness: .25, metalness: .9 }), -12.55, .8, -11, { ry: Math.PI / 2 });
     add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), 0, 1.2, -6.8);
-  } else {
+  } else if (L.job === 'pawn') {
+    plate('WE BUY GOLD', -3.7, 3, -7.82, 3); plate('NO REFUNDS', 4, 2.6, -7.82, 1.9); add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), -2.2, 1.2, -5.8);
+    const junk = [0x8a3a2a, 0x2a4a8a, 0xb8a040, 0x3a3a3a, 0x7a2a6a];
+    for (let k = 0; k < 18; k++) add(new T.BoxGeometry(.34, .3 + (k % 3) * .14, .3), std(junk[k % 5], { roughness: .6, metalness: k % 2 ? .6 : 0 }), -7.5, .45 + (k % 3) * .62, -7.2 + Math.floor(k / 3) * 1.05);
+  } else if (L.job === 'bodega') {
     plate('EMPLOYEES ONLY', -4, 2.5, -6.82, 1.9); add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), 4.9, 1.2, -3.1);
     const cols = [0xd04030, 0xe8c040, 0x4080d0, 0x50a060, 0xe08030];
     for (const sx of [-3.3, -.9]) for (let k = 0; k < 30; k++) add(new T.BoxGeometry(.2, .26, .2), std(cols[k % 5], { roughness: .7 }), sx + ((k % 2) ? .33 : -.33), .5 + Math.floor(k / 10) * .5, -5.3 + (k % 10) * .4);
     h.glow(new T.Vector3(-5.25, 1.4, -.85), 0x40ff80, 1.2);
   }
   const stripe = h.canvasTex(128, 32, (g) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#e8e0c8' : '#3a1f5a'; g.fillRect(i * 16, 0, 16, 32); } });
-  add(new T.BoxGeometry(5, .12, 1.9), new T.MeshLambertMaterial({ map: stripe }), 0, 2.95, 1.0, { rx: .16 });
+  if (L.job !== 'truck') add(new T.BoxGeometry(5, .12, 1.9), new T.MeshLambertMaterial({ map: stripe }), 0, 2.95, 1.0, { rx: .16 });
+  else { const tm = h.label('TRI-BORO ARMORED', 512, 64, 'bold 44px Arial', '#e8e8e8', '#000000'); add(new T.PlaneGeometry(5.6, .7), tm, -18.75, 1.7, 9.58, { ry: Math.PI }); for (const [x, z] of [[-16.5, 9.6], [-16.5, 11.9], [-21, 9.6], [-21, 11.9], [-23.6, 9.8], [-23.6, 11.7]]) { const w = add(new T.CylinderGeometry(.45, .45, .3, 12), std(0x0c0c0e, { roughness: .8 }), x, .45, z, { rx: Math.PI / 2 }); } }
   const puddle = std(0x05070c, { roughness: .03, metalness: .9, transparent: true, opacity: .75 });
   for (const [x, z, s] of [[-6, 8, 2.2], [3, 11, 1.6], [12, 6.5, 1.3], [-15, 10.5, 2.6], [20, 9, 2]]) { const p = add(new T.CircleGeometry(1, 18), puddle, x, .008, z, { rx: -Math.PI / 2 }); p.scale.set(s, s * .6, 1); }
   const moon = h.glow(new T.Vector3(-70, 85, -120), 0xdde8ff, 34); moon.material.opacity = .9; moon.material.fog = false;

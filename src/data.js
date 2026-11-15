@@ -86,6 +86,10 @@ export const JOBS = {
     brief: 'Five guards, four cameras, a lobby full of witnesses. The vault is in the basement behind two card readers that have to be turned <b>at the same time</b>. Chief Mahoney wears one keycard in the security room; the manager keeps the other in his desk upstairs. No cards? Bring the drill and bring patience. Drop a guard and somebody has to answer his radio.' },
   bodega: { name: 'Corner Bodega', hood: 'Bushwick', take: 'up to $45k',
     brief: 'Two minutes, in and out. One camera, a few customers, a clerk with a panic button and Mr. Park behind the counter, who is armed and carries the storage-room key. Register, ATM, and a floor safe in the back. A good place to learn how fast a quiet job turns loud.' },
+  pawn: { name: 'Cash 4 Gold Pawn', hood: 'Jamaica, Queens', take: 'up to $50k',
+    brief: 'Five cases of other people\'s gold up front and the real money in the back-room safe. Sal Moretti works the counter with a .38 under it. Officer Greer walks the back room and carries the key. One camera over the door.' },
+  truck: { name: 'Armored Truck', hood: 'Meatpacking District', take: 'up to $55k',
+    brief: 'A cash truck idling at a loading dock. No building, no cameras, no witnesses: just three armed couriers and three crates behind the rear doors. It can be done quietly if you are quick with the radios. If it goes loud, the police are there in <b>fourteen seconds</b>.' },
   jewel: { name: '47th St Fine Jewelers', hood: 'Diamond District', take: 'up to $95k',
     brief: 'A smaller score to learn the ropes. Two guards, two cameras, a showroom of customers. Eight display cases: smash them and the whole block hears it, or let a <b>Safecracker</b> cut the glass quietly. The real money is the safe in the owner\'s office behind the stock room. Officer Walsh carries the keycard for the back doors.' },
 };

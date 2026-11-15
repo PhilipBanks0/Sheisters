@@ -396,11 +396,61 @@ function bodega() {
   L.vaultBags = []; L.safeBags = [[3.2, -9.3], [3, -10.3]];
 }
 
-export const JOB_IDS = ['bank', 'jewel', 'bodega'];
+// ------------------------------------------------------------------ job four: the pawn shop
+function pawn() {
+  street();
+  L.name = 'Cash 4 Gold Pawn'; L.sign = 'CASH 4 GOLD · PAWN'; L.signY = 3.45; L.floors = [['GROUND — shop floor and back room', 0]];
+  L.restricted = (x, y, z) => x > -8 && x < 8 && z < -8 && z > -13;
+  L.lootMark = [6.4, 1.6, -11.6]; L.objSafe = 'Crack the safe in the back room'; L.bagV = 9000;
+  L.pins = [[0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 6.4, -11.6, 'BACK-ROOM SAFE', '#5fd38d'], [0, 0, -3.6, '5 DISPLAY CASES', '#5fd38d'], [0, -4, -6.6, 'OWNER (ARMED)', '#ff5a5a']];
+  B(-14, -8.15, 0, 10, -26, 0, 'brick3', { skyline: true }); B(8.15, 14, 0, 12, -26, 0, 'brick', { skyline: true }); B(-8.15, 8.15, 0, 10, -26, -13.15, 'brick2', { skyline: true });
+  F(-8, 8, -13, 0, 0, 'wood'); B(-8.3, 8.3, 3.9, 4.2, -13.3, .3, 'roof');
+  wallX(0, -8, 8, 0, 3.9, 'brick', [[-7, -1.8, 3, .9, 'glass'], [-1.1, 1.1, 2.4], [1.8, 7, 3, .9, 'glass']]);
+  wallX(-13, -8, 8, 0, 3.9, 'plaster'); wallZ(-8, -13, 0, 0, 3.9, 'plaster'); wallZ(8, -13, 0, 0, 3.9, 'plaster');
+  wallX(-8, -8, 8, 0, 3.9, 'plaster', [[3.4, 4.6]]); door('back', 'x', -8, 3.4, 4.6, 0, { locked: true, name: 'Back room' });
+  L.cases = [[-5.5, -2.6], [-2, -2.6], [2, -2.6], [5.5, -2.6], [5.6, -5.4]];
+  for (const [x, z] of L.cases) { B(x - .8, x + .8, 0, .9, z - .4, z + .4, 'counter', { opaque: false }); B(x - .78, x + .78, .9, 1.25, z - .38, z + .38, 'glass', { opaque: false, glass: true, solid: false }); }
+  B(-6.5, -1, 0, 1.05, -6.1, -5.5, 'counter', { opaque: false }); B(-7.8, -7.2, 0, 2.2, -7.6, -1.2, 'shelf');
+  B(5.9, 7.2, 0, 1.4, -12.3, -11, 'vaultdoor'); B(-7.5, -3, 0, 1.8, -12.8, -12.2, 'shelf'); B(-2, .5, 0, .8, -11, -10, 'desk', { opaque: false });
+  L.lights.push([-3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [0, 3.4, -10.6, 0xffd0a0, .8, 10]);
+  L.cams.push({ id: 0, x: 7.5, y: 3.5, z: -.5, yaw: Math.atan2(-8, -5), pitch: -.45, sweep: .45, range: 12, name: 'Shop', floor: 0 });
+  L.guards.push({ name: 'Sal Moretti', route: [{ x: -4, y: 0, z: -6.9, wait: 99 }], face: 0 });
+  L.guards.push({ name: 'Officer Greer', route: [{ x: 3, y: 0, z: -10.2, wait: 5 }, { x: -5.5, y: 0, z: -10.2, wait: 5 }], card: 'a' });
+  const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
+  civ(-2, -3.6, Math.PI); civ(4.2, -3.8, Math.PI / 2); civ(-6, -4.2, -Math.PI / 2);
+  const I = (id, type, x, y, z, o) => L.inter.push(Object.assign({ id, type, x, y, z, r: 1.9 }, o || {}));
+  for (const k in L.doors) { const d = L.doors[k]; I('door:' + k, 'door', d.x, d.y + 1, d.z, { door: k, r: 1.7 }); }
+  L.cases.forEach(([x, z], i) => I('case' + i, 'case', x, 1, z, { value: 1600 + (i * 613) % 1500, r: 1.7 }));
+  I('till0', 'till', -2.2, 1, -6.6, { value: 1100, r: 1.5 });
+  I('safe', 'safe', 5.4, 1, -11.6, { r: 1.7 }); I('van', 'van', 4.3, 1, 6.2, { r: 2.6 }); I('stash0', 'stash', 16.1, 1, -21, { r: 2.2, name: 'dumpster' });
+  L.vaultBags = []; L.safeBags = [[4.6, -10.4], [4.4, -12.2], [3.6, -11.4]];
+}
+// ------------------------------------------------------------------ job five: the armored truck (a street ambush)
+function truck() {
+  street();
+  L.name = 'Armored Truck'; L.sign = ''; L.floors = [['GANSEVOORT ST — the loading dock', 0]];
+  L.restricted = (x, y, z) => x > -26 && x < -11 && z > 7 && z < 14;
+  L.lootMark = [-13.4, 1.6, 10.75]; L.objSafe = "Crack the truck's rear doors"; L.bagV = 14000; L.waveFirst = 14; L.objLoose = 'Three couriers guard the truck — drop them quietly or hit them hard';
+  L.pins = [[0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, -14.2, 10.75, 'REAR DOORS · 3 crates', '#5fd38d']];
+  B(-14, 14, 0, 14, -26, 0, 'brick2', { skyline: true });
+  L.boxes = L.boxes.filter(b => b.mat !== 'car2');                    // clear the kerb for the truck
+  B(-22.5, -15, 0, 2.7, 9.6, 11.9, 'dumpster', { car: true });        // the truck body
+  B(-24.6, -22.5, 0, 2.1, 9.8, 11.7, 'cabinet', { car: true });       // its cab
+  B(-10.5, -9.5, 0, 1.1, 12.4, 13.4, 'pallet', { opaque: false }); B(-12.4, -11.4, 0, .9, 7.2, 8.2, 'pallet', { opaque: false });
+  L.lights.push([-18, 5.2, 10.7, 0xfff0d0, 1.1, 16]);
+  L.guards.push({ name: 'Courier Banks', route: [{ x: -13.6, y: 0, z: 10.8, wait: 99 }], face: Math.PI / 2 });
+  L.guards.push({ name: 'Courier Hale', route: [{ x: -16, y: 0, z: 8.6, wait: 4 }, { x: -24, y: 0, z: 8.6, wait: 4 }] });
+  L.guards.push({ name: 'Courier Ortiz', route: [{ x: -25.6, y: 0, z: 10.8, wait: 99 }], face: -Math.PI / 2 });
+  const I = (id, type, x, y, z, o) => L.inter.push(Object.assign({ id, type, x, y, z, r: 1.9 }, o || {}));
+  I('safe', 'safe', -14.4, 1, 10.75, { r: 1.8, label: "Crack the truck's rear doors" }); I('van', 'van', 4.3, 1, 6.2, { r: 2.6 }); I('stash0', 'stash', 16.1, 1, -21, { r: 2.2, name: 'dumpster' });
+  L.vaultBags = []; L.safeBags = [[-13.5, 10.1], [-13.5, 11.4], [-12.8, 10.75]];
+}
+
+export const JOB_IDS = ['bodega', 'pawn', 'jewel', 'truck', 'bank'];
 export function buildLevel(job) {
   for (const k of ['boxes', 'ramps', 'lights', 'props', 'cams', 'inter', 'guards', 'civs']) L[k] = [];
   L.doors = {}; L.vaultDoor = null; L.crate = null; L.safeBags = null; L.cases = null;
-  const def = { jewel, bodega }[job] || bank; L.signY = 0; def(); L.job = def === bank ? 'bank' : job;
+  const def = { jewel, bodega, pawn, truck }[job] || bank; L.signY = 0; L.objSafe = L.objLoose = null; L.bagV = 16000; L.waveFirst = 28; def(); L.job = def === bank ? 'bank' : job;
   buildNav();
 }
 buildLevel('bank');

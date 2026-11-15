@@ -117,7 +117,7 @@ export function buildScene() {
     const p = new T.PointLight(0xffa850, 1.15, 20, 1.6); p.position.set(s[0], 5.8, s[1] + (s[1] < 8 ? .8 : -.8)); sc.add(p);
     const b = new T.Mesh(new T.SphereGeometry(.22, 8, 6), new T.MeshBasicMaterial({ color: 0xffc070 })); b.position.copy(p.position); sc.add(b); glow(p.position, 0xffa040, 3.5); }
   // signs
-  const sign = new T.Mesh(new T.PlaneGeometry(13, 1.6), label(L.sign, 1024, 128, 'bold 76px Georgia', '#ffe6a8', '#ffb030')); sign.position.set(0, L.signY, .22); if (L.job === 'bodega') sign.scale.set(.88, .7, 1); sc.add(sign);
+  if (L.sign) { const sign = new T.Mesh(new T.PlaneGeometry(13, 1.6), label(L.sign, 1024, 128, 'bold 76px Georgia', '#ffe6a8', '#ffb030')); sign.position.set(0, L.signY, .22); if (L.job === 'bodega') sign.scale.set(.88, .7, 1); if (L.job === 'pawn') sign.scale.set(1.1, .8, 1); sc.add(sign); }
   const neon = (txt, x, y, z, ry, col, glowc, w) => { const m = new T.Mesh(new T.PlaneGeometry(w, 1.3), label(txt, 512, 128, 'bold 84px Arial', col, glowc)); m.position.set(x, y, z); m.rotation.y = ry; sc.add(m); if (w > 4.2) { const p = new T.PointLight(new T.Color(glowc), 1.3, 13, 1.6); p.position.set(x, y, z + (ry ? -1 : 1)); sc.add(p); } };
   neon('LIQUOR', -12, 4.2, 17.9, Math.PI, '#ffd0e0', '#ff2a6a', 5); neon('DINER', 8, 4.4, 17.9, Math.PI, '#d0f4ff', '#28c8ff', 4.6); neon('PAWN', 27, 4, 17.9, Math.PI, '#e8ffd0', '#58ff58', 4);
   // road paint, van detail, vault gold shimmer

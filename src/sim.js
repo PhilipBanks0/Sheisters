@@ -33,7 +33,7 @@ export function createState(seats, favor, crew) {
     h.npc[h.nid++] = { react: 0, cowT: 0, button: -1 };
   });
   L.vaultBags.forEach((b, i) => S.bags.push({ id: i, x: b[0], y: i >= 6 ? -3.3 : -4, z: b[1], st: 0, by: -1, v: 11000 + (i * 1733) % 5000 }));
-  (L.safeBags || []).forEach((b, i) => S.bags.push({ id: 50 + i, x: b[0], y: 0, z: b[1], st: 3, by: -1, v: 16000 + i * 3500 }));
+  (L.safeBags || []).forEach((b, i) => S.bags.push({ id: 50 + i, x: b[0], y: 0, z: b[1], st: 3, by: -1, v: L.bagV + i * Math.round(L.bagV * .22) }));
   S.job = L.job; S.car = crew && CARS[crew.car] ? crew.car : 'van'; S.bribes = (crew && crew.bribes) || [];
   S.crate = L.crate ? { x: L.crate.x, y: L.crate.y, z: L.crate.z, st: 0, h: [] } : { x: 0, y: 0, z: 0, st: 2, h: [] };
   if (favor === 'sheet') for (const n of S.npc) if (n.k === 'guard') S.marks[n.id] = 1e9;
@@ -94,7 +94,7 @@ export function interInfo(S, it, p) {
     case 'case': if (S.used[it.id]) return null;
       return mask('Open the display case') || (c === 'safecracker' ? { label: 'Cut the glass — quiet', time: has(p, 'skeleton') ? 1.5 : 3.5 } : { label: 'Smash the case — LOUD', time: 1, smash: true });
     case 'safe': if (S.used.safe) return null;
-      return mask('Crack the safe') || { label: 'Crack the safe', time: c === 'safecracker' ? (has(p, 'skeleton') ? 4 : 8) : 20 };
+      return mask('Crack it open') || { label: it.label || 'Crack the safe', time: c === 'safecracker' ? (has(p, 'skeleton') ? 4 : 8) : 20 };
     case 'van':
       if (p.bags > 0) return { label: 'Throw the bag in the van', time: .25 };
       if (!crewAtVan(S)) return { label: 'Leave — waiting on the crew', no: true };
@@ -138,8 +138,8 @@ export function objectives(S) {
     const cases = L.inter.filter(i => i.type === 'case'), done = cases.filter(i => S.used[i.id]).length, bags = S.bags.filter(b => b.st !== 3), sec = bags.filter(b => b.st === 2).length;
     if (!S.loud && S.npc.some(n => n.radio > 0)) o.push('ANSWER THE RADIO on the guard you dropped! (' + S.radios + '/4 used)');
     if (cases.length) o.push('Clean out the display cases (' + done + '/' + cases.length + ') — smashing is loud, a Safecracker cuts quietly');
-    else o.push('Hit the register and the ATM');
-    o.push(S.used.safe ? 'Haul the bags to the van (' + sec + '/' + bags.length + ')' : S.job === 'jewel' ? "Crack the safe in the owner's office" : 'Crack the floor safe in the storage room');
+    else o.push(L.objLoose || 'Hit the register and the ATM');
+    o.push(S.used.safe ? 'Haul the bags to the van (' + sec + '/' + bags.length + ')' : L.objSafe || (S.job === 'jewel' ? "Crack the safe in the owner's office" : 'Crack the floor safe in the storage room'));
     const kg = L.guards.find(g => g.card); if (S.cards.a < 0 && kg) o.push('· ' + kg.name + ' carries the key for the back door');
     if (!S.camsOff && !S.loud && L.inter.some(i => i.type === 'console')) o.push('Optional: kill the cameras from the office');
     o.push('Get the whole crew to the van and drive');
@@ -177,7 +177,7 @@ export function startAlarm(S, delay, why) {
 }
 function goLoud(S, why) {
   if (S.loud) return;
-  S.loud = true; S.why = why; S.alarmT = -1; S.waveT = 28 * (S.bribes.includes('beat') ? 1.3 : 1) + (S.favor === 'dispatch' ? 45 : 0);
+  S.loud = true; S.why = why; S.alarmT = -1; S.waveT = L.waveFirst * (S.bribes.includes('beat') ? 1.3 : 1) + (S.favor === 'dispatch' ? 45 : 0);
   for (const n of S.npc) if (n.k === 'guard' && UP[n.st]) n.st = 'fight';
   msg(S, 'ALARM! ' + why + '. Cops are on the way.', 'bad'); sfx(S, 'alarm');
 }
