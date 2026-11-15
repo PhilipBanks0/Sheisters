@@ -20,6 +20,7 @@ addEventListener('keydown', e => {
   if (G.phase === 'heist' && ['Tab', 'Space', 'KeyF', 'KeyG', 'KeyR', 'KeyQ'].includes(e.code)) e.preventDefault();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('keydown', () => { G.usePad = false; }); addEventListener('mousemove', e => { if (IN.locked && (e.movementX || e.movementY)) G.usePad = false; });
 addEventListener('mousemove', e => { if (IN.locked) { IN.lx += e.movementX; IN.ly += e.movementY; } });
 addEventListener('mousedown', e => {
   unlockAudio();
@@ -35,9 +36,10 @@ function readPad(dt) {
   const o = { mx: 0, my: 0, lx: 0, ly: 0, shoot: false, aim: false, use: false, sprint: false, on: false };
   const p = (navigator.getGamepads ? [...navigator.getGamepads()] : []).find(p => p && p.connected && p.mapping === 'standard'); if (!p) return o;
   const dz = v => Math.abs(v) < .16 ? 0 : (v - Math.sign(v) * .16) / .84, b = i => p.buttons[i] && p.buttons[i].pressed;
+  if (p.buttons.some(x => x.pressed) || p.axes.some(a => Math.abs(a) > .5)) G.usePad = true;
   o.on = true; o.mx = dz(p.axes[0]); o.my = -dz(p.axes[1]); o.lx = dz(p.axes[2]) * 2.8 * dt; o.ly = dz(p.axes[3]) * 2.0 * dt;
   o.shoot = p.buttons[7].value > .4; o.aim = p.buttons[6].value > .4; o.use = b(0); o.sprint = b(10);
-  const map = { 1: 'KeyC', 3: 'KeyG', 2: 'KeyR', 4: 'KeyQ', 5: 'Ping', 11: 'KeyF', 12: 'Digit1', 13: 'Digit3', 14: 'Digit2', 15: 'Digit4', 7: 'Shoot', 9: 'Enter' };
+  const map = { 8: 'KeyT', 1: 'KeyC', 3: 'KeyG', 2: 'KeyR', 4: 'KeyQ', 5: 'Ping', 11: 'KeyF', 12: 'Digit1', 13: 'Digit3', 14: 'Digit2', 15: 'Digit4', 7: 'Shoot', 9: 'Enter' };
   for (const i in map) { const d = i == 7 ? o.shoot : b(i); if (d && !padPrev[i]) IN.pressed[map[i]] = true; padPrev[i] = d; }
   return o;
 }
@@ -146,6 +148,7 @@ function control(dt) {
     const g = groundAt(l.x, l.y, l.z);
     if (g < -50) { l.x = ox; l.z = oz; } else if (l.y > g + .03) { me.vy -= 22 * dt; l.y = Math.max(g, l.y + me.vy * dt); } else { me.vy = 0; l.y += (g - l.y) * Math.min(1, dt * 20); }
     l.mv = Math.hypot(l.x - ox, l.z - oz) / Math.max(dt, .001);
+    if (!l.cr) { me.stepD = (me.stepD || 0) + l.mv * dt; if (me.stepD > 1.9) { me.stepD = 0; sfx('step', l.mv > 5 ? .32 : .18); } }
   } else { l.mv = 0; l.x = p.x; l.y = p.y; l.z = p.z; }
   // camera
   const aim = (IN.aim || pad.aim) && alive, eye = p.dn ? .9 : l.cr ? 1.2 : 1.62; camS.aim = aim;
@@ -164,6 +167,7 @@ function control(dt) {
     else { if (me.latch == null && best && !best.info.no) me.latch = best.it.id; if (best && !best.info.no && best.it.id === me.latch) l.it = me.latch; }
     if (P.KeyG) { if (!p.mk) { sendEv({ k: 'mask' }); G.masked = true; } else if (p.bags || p.body >= 0 || S.crate.h.includes(p.id)) sendEv({ k: 'drop' }); }
     if (P.KeyQ) { if (p.abCd <= 0) sendEv({ k: 'abil' }); else hint('Not ready yet'); }
+    if (P.KeyT) sendEv({ k: 'order' });
     if (P.KeyF) { if (p.mk) sendEv({ k: 'shout' }); else hint('Mask up first [G]'); }
     if (P.KeyR && me.ammo < gun.mag && me.reload <= 0) { me.reload = 1.5; sfx('unlock', .6); }
     const wants = gun.auto ? (IN.shoot || pad.shoot) : P.Shoot;
@@ -177,6 +181,9 @@ function control(dt) {
     }
   }
   if (P.Ping || P.KeyZ) { const a = aimPoint(S, camS.x, camS.y, camS.z, -bx, -by, -bz); sendEv({ k: 'ping', x: a.x, y: a.y, z: a.z, n: a.n }); }
+  // a guard's footsteps carry: you hear him before you see him
+  me.gT = (me.gT || 0) - dt;
+  if (me.gT <= 0) { me.gT = .52; let near = 99; for (const n of S.npc) if (n.k !== 'civ' && n.mv > .5 && n.st !== 'gone' && Math.abs(n.y - l.y) < 2.5) near = Math.min(near, Math.hypot(n.x - l.x, n.z - l.z)); if (near < 11) sfx('step', .5 * (1 - near / 11)); }
   for (let i = 0; i < CALLOUTS.length; i++) if (P['Digit' + (i + 1)]) sendEv({ k: 'call', i });
   // tell the host where we are
   if (G.role === 'guest') { me.sendT -= dt; if (me.sendT <= 0) { me.sendT = 1 / 18; const r = v => Math.round(v * 100) / 100; netSend({ t: 'p', v: [r(l.x), r(l.y), r(l.z), r(l.yaw), r(l.pitch), l.cr, r(l.mv)], it: l.it }); } }
@@ -230,7 +237,7 @@ function drawHud(dt) {
   else { banner = det > .05 ? 'SOMEBODY IS LOOKING…' : 'QUIET — nobody knows yet'; bc = det > .4 ? 'warn' : ''; }
   const b = G.best; let prompt = '';
   if (b) { const pr = S.prog[b.it.id], frac = b.info.reader !== undefined ? S.vault.rp / 1.6 : pr ? pr.p / (pr.t || 1) : 0; const other = b.info.reader !== undefined ? (S.t - S.vault.r[1 - b.info.reader] < .25 ? ' — partner is on the other one!' : ' — waiting for a partner') : '';
-    prompt = `<div class="prompt ${b.info.no ? 'no' : ''}">${b.info.no ? '' : '<b>E</b> '}${esc(b.info.label + other)}${frac > 0 ? `<i style="width:${clamp(frac, 0, 1) * 100}%"></i>` : ''}</div>`; }
+    prompt = `<div class="prompt ${b.info.no ? 'no' : ''}">${b.info.no ? '' : `<b>${G.usePad ? 'Ⓐ' : 'E'}</b> `}${esc(b.info.label + other)}${frac > 0 ? `<i style="width:${clamp(frac, 0, 1) * 100}%"></i>` : ''}</div>`; }
   else if (G.hintT > 0) prompt = `<div class="prompt no">${esc(G.hint)}</div>`;
   const cards = (S.cards.a === p.id ? 1 : 0) + (S.cards.b === p.id ? 1 : 0);
   hud.innerHTML = `
@@ -241,9 +248,9 @@ function drawHud(dt) {
     <div class="me"><div class="take">${money(S.take)}<small>in the van</small></div>
       <div class="bars"><span class="hp big"><i style="width:${p.hp}%"></i></span><span class="ar"><i style="width:${Math.min(100, p.ar)}%"></i></span></div>
       <div class="gun">${p.mk ? `${esc(gun.name)} <b>${me.reload > 0 ? 'reloading' : me.ammo + ' / ' + gun.mag}</b>` : 'Hands in your pockets'}${cards ? ' · 🔑×' + cards : ''}${p.bags ? ' · 💰×' + p.bags + ' <small>[G] drop</small>' : ''}${p.body >= 0 ? ' · carrying a body <small>[G] drop</small>' : ''}${S.crate.h.includes(p.id) ? ' · on the gold crate <small>[G] let go</small>' : ''}</div>
-      <div class="abil ${p.abCd > 0 ? 'cd' : ''}"><b>Q</b> ${esc(cls.ability.name)} ${p.ab > 0 && p.cls !== 'mastermind' ? '· ACTIVE ' + Math.ceil(p.ab) + 's' : p.abCd > 0 ? '· ' + Math.ceil(p.abCd) + 's' : '· ready'}</div></div>
+      <div class="abil ${p.abCd > 0 ? 'cd' : ''}"><b>${G.usePad ? 'LB' : 'Q'}</b> ${esc(cls.ability.name)} ${p.ab > 0 && p.cls !== 'mastermind' ? '· ACTIVE ' + Math.ceil(p.ab) + 's' : p.abCd > 0 ? '· ' + Math.ceil(p.abCd) + 's' : '· ready'}</div></div>
     ${prompt}
-    ${keys.Tab || keys.KeyX ? `<div class="calls"><h4>CALLOUTS</h4>${CALLOUTS.map((c, i) => `<div><b>${i + 1}</b> ${c[0]}</div>`).join('')}<div><b>Z</b> / middle-click — ping</div><div><b>F</b> — shout the room down</div></div>` : '<div class="keys">WASD move · Shift run · C crouch · E use · G mask / drop bag · Q ability · F shout · Z ping · 1–6 callouts · hold Tab for list</div>'}
+    ${keys.Tab || keys.KeyX ? `<div class="calls"><h4>CALLOUTS</h4>${CALLOUTS.map((c, i) => `<div><b>${i + 1}</b> ${c[0]}</div>`).join('')}<div><b>Z</b> / middle-click — ping</div><div><b>F</b> — shout the room down</div></div>` : `<div class="keys">${G.usePad ? 'Stick move · L3 run · Ⓑ crouch · Ⓐ use · Ⓨ mask / drop · LB ability · RB ping · R3 shout · Ⓧ reload · RT fire · LT aim · D-pad callouts · Back crew follow' : 'WASD move · Shift run · C crouch · E use · G mask / drop · Q ability · F shout · Z ping · T crew follow / hold · 1–6 callouts · hold Tab for list'}</div>`}
     ${p.dn === 1 ? `<div class="down">YOU'RE DOWN<small>A partner has ${Math.ceil(p.dnT)}s to get you up</small></div>` : p.dn === 2 ? '<div class="down">IN CUFFS<small>Watch the rest of the crew finish it</small></div>' : ''}
     ${!IN.locked && !S.over ? '<div class="click">Click to take control</div>' : ''}`;
 }

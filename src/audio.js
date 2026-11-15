@@ -46,6 +46,7 @@ export function sfx(name, v) {
     case 'hurt': noise(.1, 700, .5 * v); break;
     case 'siren': for (let i = 0; i < 4; i++) { tone(600, 950, .45, 'sine', .08 * v, i * .9); tone(950, 600, .45, 'sine', .08 * v, i * .9 + .45); } break;
     case 'alarm': for (let i = 0; i < 14; i++) tone(1900, 1900, .09, 'square', .07 * v, i * .16); break;
+    case 'step': noise(.05, 420, .5 * v, 1.5); break;
     case 'click': tone(900, 700, .04, 'square', .08 * v); break;
     case 'win': [523, 659, 784, 1047].forEach((f, i) => tone(f, f, .3, 'triangle', .18, i * .13)); break;
     case 'lose': [330, 262, 196].forEach((f, i) => tone(f, f * .97, .5, 'sawtooth', .14, i * .3)); break;

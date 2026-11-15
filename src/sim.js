@@ -12,7 +12,7 @@ export const isBody = n => n.st === 'ko' || n.st === 'dead';
 
 export function createState(seats, favor) {
   const S = { t: 0, loud: false, why: '', alarmT: -1, alarmWhy: '', wave: 0, waveT: 0, take: 0, civKills: 0, cards: { a: -1, b: -1 }, doors: {}, cams: [], camsOff: false, jamT: 0,
-    vault: { open: false, drill: 0, prog: 0, need: 75, r: [-9, -9], rp: 0 }, bags: [], pl: [], npc: [], prog: {}, used: {}, marks: {}, pings: [], ev: [], favor, over: null };
+    vault: { open: false, drill: 0, prog: 0, need: 75, r: [-9, -9], rp: 0 }, bags: [], pl: [], npc: [], prog: {}, used: {}, marks: {}, pings: [], ev: [], favor, over: null, order: -1 };
   for (const k in L.doors) S.doors[k] = { o: 0, l: L.doors[k].locked ? 1 : 0, n: 0 };
   if (favor === 'key') S.doors.side.l = 0;
   L.cams.forEach(c => S.cams.push({ d: 0, a: c.yaw }));
@@ -239,6 +239,13 @@ export function playerEvent(S, p, e) {
     sfx(S, 'ping'); return;
   }
   if (p.dn) return;
+  if (e.k === 'order') {
+    if (!S.pl.some(q => q.bot)) return;
+    const follow = !(S.order === p.id); S.order = follow ? p.id : -1;
+    ev(S, { k: 'say', p: p.id, s: follow ? ['On me, all of you!', 'Stick close, boys.', 'Follow.', 'Come with me! Please!'][p.ch % 4] : ['Back to the van. Keep it running.', 'Go mind the van.', 'Hold the van.', 'Okay, wait by the van!'][p.ch % 4] });
+    if (follow && !S.loud) msg(S, 'The AI partners will come in once it goes loud.', '');
+    return;
+  }
   if (e.k === 'mask' && !p.mk) { p.mk = 1; sfx(S, 'mask', p); return; }
   if (e.k === 'drop' && S.crate.h.includes(p.id)) { S.crate.h = S.crate.h.filter(i => i !== p.id); sfx(S, 'thud', S.crate); return; }
   if (e.k === 'drop' && p.body >= 0) { dropBody(S, p); return; }
@@ -517,16 +524,17 @@ function panic(S, n, m) {
 
 // AI partners: they hold the van, cover the street once it goes loud, and pick up anyone who drops nearby
 function botUpdate(S, h, p, dt) {
-  const b = h.bot[p.id] || (h.bot[p.id] = { cd: 1, home: { x: p.x, z: p.z }, rep: 0 });
+  const b = h.bot[p.id] || (h.bot[p.id] = { cd: 1, home: { x: p.x, y: 0, z: p.z }, rep: 0 });
   if (p.dn) { p.mv = 0; return; }
   if (!S.loud) { p.mv = 0; p.yaw += (Math.PI + Math.sin(S.t * .3 + p.id) * .8 - p.yaw) * dt; return; }
   p.mk = 1;
-  const downed = S.pl.find(q => q.dn === 1 && q.id !== p.id && Math.hypot(q.x - L.van.x, q.z - L.van.z) < 26 && Math.abs(q.y) < 1);
-  const goal = downed || b.home, dg = d2(p, goal);
+  const lead = S.order >= 0 ? S.pl.find(q => q.id === S.order && q.dn !== 2) : null;
+  const downed = S.pl.find(q => q.dn === 1 && q.id !== p.id && (lead ? d3(q, p) < 40 : Math.hypot(q.x - L.van.x, q.z - L.van.z) < 26 && Math.abs(q.y) < 1));
+  const goal = downed || lead || b.home, dg = d3(p, goal), stop = downed ? 1.4 : lead ? 2.6 + (p.id % 3) * .9 : .6;
   p.it = null;
-  if (dg > (downed ? 1.4 : .6)) {
-    b.rep -= dt; if (b.rep <= 0 || !b.path) { b.rep = 1; b.path = findPath(p.x, p.y, p.z, goal.x, 0, goal.z); b.pi = 1; }
-    if (b.path && b.pi < b.path.length) { const t = b.path[b.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz); if (d < .25) b.pi++; else { p.x += dx / d * 4.2 * dt; p.z += dz / d * 4.2 * dt; p.yaw = Math.atan2(dx, dz); } }
+  if (dg > stop) {
+    b.rep -= dt; if (b.rep <= 0 || !b.path) { b.rep = 1; b.path = findPath(p.x, p.y, p.z, goal.x, goal.y || 0, goal.z); b.pi = 1; }
+    if (b.path && b.pi < b.path.length) { const t = b.path[b.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz); if (d < .25) b.pi++; else { const v = lead ? 5.4 : 4.2; p.x += dx / d * v * dt; p.z += dz / d * v * dt; p.yaw = Math.atan2(dx, dz); } const g = groundAt(p.x, p.y + .4, p.z); if (g > -50) p.y = g; }
     p.mv = 4.2;
   } else { p.mv = 0; if (downed) p.it = 'rev:' + downed.id; }
   let tgt = null, bd = 30;
