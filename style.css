@@ -77,3 +77,4 @@ select { font: inherit; color: inherit; background: #0c0d13; border: 1px solid v
 .bprow.n1 { display: block; }
 .jobs { grid-template-columns: 1fr; }
 .tip { right: 14px; top: 90px; width: 300px; background: rgba(20,34,58,.94); border: 1px solid #4d8ad0; border-left: 4px solid #6ab0ff; border-radius: 4px; padding: 10px 12px; font-size: 13px; } .tip h4 { font-size: 11px; letter-spacing: .2em; color: #9fc8ff; margin-bottom: 4px; }
+#ui.pause { pointer-events: auto; display: flex; align-items: center; justify-content: center; background: rgba(4,5,10,.45); } .pz { width: 340px; text-align: center; } .pz h3 { color: var(--gold); letter-spacing: .14em; margin-bottom: 8px; } .pz .ghost { width: 100%; }

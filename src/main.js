@@ -1,7 +1,7 @@
 // SHEISTERS — client: menus, controls, networking, HUD, main loop.
 import { L, groundAt, moveCircle, rayT, buildLevel, restricted } from './level.js';
 import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, JOBS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
-import { createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
+import { abort, createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
 import { sfx, music, unlockAudio, setVol } from './audio.js';
 
@@ -65,8 +65,10 @@ function onNet(m) {
   if (m.t === 'bye') { G.err = 'The boss closed up shop.'; NET.ws = null; toTitle(); return; }
   if (G.role === 'host') {
     if (m.t === 'peer') {
-      if (m.on) { G.lobby.seats.push({ id: m.from === undefined ? m.id : m.from, name: 'Crook', cls: 'ghost', lvl: 1, perks: [] }); }
-      else { G.lobby.seats = G.lobby.seats.filter(s => s.id !== m.id); if (G.S) { const p = G.S.pl.find(p => p.id === m.id); if (p && !p.dn) { p.dn = 2; say(p.name + ' skipped town.', 'warn'); } } }
+      if (m.on) { G.lobby.seats.push({ id: m.id, name: 'Crook', cls: 'ghost', lvl: 1, perks: [] });
+        const p = G.S && !G.S.over && G.S.pl.find(p => p.id === m.id && p.left);
+        if (p) { p.left = 0; p.dn = p.wasDn === 2 ? 2 : 0; p.hp = Math.max(p.hp, 50); p.x = L.van.x - 1.5; p.y = 0; p.z = L.van.z - .5; say(p.name + ' is back on the line.', 'good'); } }
+      else { G.lobby.seats = G.lobby.seats.filter(s => s.id !== m.id); if (G.S) { const p = G.S.pl.find(p => p.id === m.id); if (p && !p.left) { p.left = 1; p.wasDn = p.dn; p.dn = 2; p.it = null; say(p.name + ' lost the line. They can rejoin with the crew code.', 'warn'); } } }
       pushLobby();
     } else if (m.t === 'me') { const s = G.lobby.seats.find(s => s.id === m.from); if (s) { s.name = String(m.name || 'Crook').slice(0, 14); s.cls = CLASSES[m.cls] ? m.cls : 'ghost'; s.lvl = m.lvl | 0; s.perks = (m.perks || []).filter(x => typeof x === 'string').slice(0, 5); s.task = TASKS[m.task] ? m.task : ''; pushLobby(); } }
     else if (m.t === 'p' && G.S) { const p = G.S.pl.find(p => p.id === m.from); if (p && !p.dn && Array.isArray(m.v)) { [p.x, p.y, p.z, p.yaw, p.pitch, p.cr, p.mv] = m.v; p.it = m.it || null; } else if (p) p.it = null; }
@@ -86,7 +88,10 @@ function sendMe() {
 
 // ------------------------------------------------------------------ flow
 function toTitle() { G.phase = 'title'; G.role = null; G.S = null; G.lobby = null; if (NET.ws) { const w = NET.ws; NET.ws = null; w.close(); } document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
+const NEED = { bodega: 0, jewel: 1, bank: 3 };
+const unlocked = k => G.save.all || G.save.jobs >= NEED[k];
 function startLobby(role, id, code) {
+  if (role !== 'guest') { const best = ['bank', 'jewel', 'bodega'].find(unlocked); if (best !== L.job) setJob(best); }
   G.role = role; G.id = me.id = id; G.code = code; G.phase = 'hideout';
   G.lobby = { seats: role === 'guest' ? [] : [{ id, name: G.save.name || 'Crook', cls: G.save.cls, lvl: 1, perks: [], ch: 0 }], favor: 'none', fill: true, job: L.job };
   sendMe(); render();
@@ -102,6 +107,7 @@ function hostStart() {
 }
 function setJob(job) { buildLevel(job); buildScene(); }
 function beginHeist(S) {
+  G.paused = undefined; G.started = false;
   G.S = S; G.phase = 'heist'; G.feed = []; G.bubbles = []; G.tipQ = []; G.tipNow = null; G.rewarded = false; G.overT = 0; me.local = null; me.reload = 0; me.cd = 0; G.masked = false;
   buildScene(); ui.innerHTML = ''; ui.className = ''; hud.style.display = hc.style.display = 'block'; music('stealth');
   say('Case the joint. Nobody notices you until the mask goes on — [G].', '');
@@ -217,7 +223,7 @@ function tipsTick(dt, S, p, l) {
 
 // ------------------------------------------------------------------ HUD
 function drawHud(dt) {
-  const S = G.S, p = myP(); if (!p) return;
+  const S = G.S, p = myP(); if (!p) { hud.innerHTML = '<div class="banner warn">JOB IN PROGRESS — you are in on the next one</div>'; return; }
   const W = hc.width = innerWidth, Hh = hc.height = innerHeight, l = me.local || p;
   g2.clearRect(0, 0, W, Hh); g2.textAlign = 'center'; g2.textBaseline = 'middle';
   const tag = (x, y, txt, col, bg) => { g2.font = 'bold 13px system-ui'; const w = g2.measureText(txt).width + 12; g2.fillStyle = bg || 'rgba(8,9,14,.75)'; g2.fillRect(x - w / 2, y - 10, w, 20); g2.fillStyle = col; g2.fillText(txt, x, y + 1); };
@@ -279,7 +285,9 @@ function drawHud(dt) {
     ${keys.Tab || keys.KeyX ? `<div class="calls"><h4>CALLOUTS</h4>${CALLOUTS.map((c, i) => `<div><b>${i + 1}</b> ${c[0]}</div>`).join('')}<div><b>Z</b> / middle-click — ping</div><div><b>F</b> — shout the room down</div></div>` : `<div class="keys">${G.usePad ? 'Stick move · L3 run · Ⓑ crouch · Ⓐ use · Ⓨ mask / drop · LB ability · RB ping · R3 shout · Ⓧ reload · RT fire · LT aim · D-pad callouts · Back crew follow' : 'WASD move · Shift run · C crouch · E use · G mask / drop · Q ability · F shout · Z ping · T crew follow / hold · 1–6 callouts · hold Tab for list'}</div>`}
     ${p.dn === 1 ? `<div class="down">YOU'RE DOWN<small>A partner has ${Math.ceil(p.dnT)}s to get you up</small></div>` : p.dn === 2 ? '<div class="down">IN CUFFS<small>Watch the rest of the crew finish it</small></div>' : ''}
     ${G.tipNow ? `<div class="tip"><h4>${TIPS[G.tipNow][0]}</h4>${esc(TIPS[G.tipNow][1])}</div>` : ''}
-    ${!IN.locked && !S.over ? '<div class="click">Click to take control</div>' : ''}`;
+`;
+  const wantPause = !IN.locked && !S.over && !R.noDraw;
+  if (wantPause !== !!G.paused) { G.paused = wantPause; ui.className = wantPause ? 'pause' : ''; ui.innerHTML = wantPause ? `<div class="card pz"><h3>${G.started ? 'PAUSED' : esc(L.name.toUpperCase())}</h3><p class="dim">${G.role === 'guest' || G.role === 'host' ? 'The job keeps running for the crew.' : 'Solo jobs keep running too. Find a quiet corner.'}</p><button data-a="resume" class="big">${G.started ? 'Back to work' : 'Start — click to take control'}</button><button data-a="quit" class="ghost">${G.role === 'guest' ? 'Leave the crew' : 'Call off the job'}</button></div>` : ''; }
 }
 
 // ------------------------------------------------------------------ menus
@@ -321,7 +329,7 @@ function render() {
       <div class="xp"><i style="width:${c.lvl >= 10 ? 100 : c.xp / xpFor(c.lvl) * 100}%"></i><span>Level ${c.lvl}${c.lvl >= 10 ? ' (max)' : ' · ' + c.xp + ' / ' + xpFor(c.lvl) + ' XP'} · ${pts} skill point${pts === 1 ? '' : 's'}</span></div>
       <div class="perks">${C.perks.map(k => { const own = c.perks.includes(k.id); return `<button data-a="perk" data-v="${k.id}" class="perk ${own ? 'own' : pts ? 'can' : ''}" ${own || !pts ? 'disabled' : ''}><b>${esc(k.name)}</b><span>${esc(k.desc)}</span></button>`; }).join('')}</div>
       <p class="dim">A skill point every second level. Experience comes from the take — bigger and quieter jobs pay more.</p></section>
-    <section class="col"><h3>THE JOB</h3><div class="jobs">${Object.keys(JOBS).map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${JOBS[k].take}</span></button>`).join('')}</div>
+    <section class="col"><h3>THE JOB</h3><div class="jobs">${Object.keys(JOBS).map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 3 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
       <p class="dim">${JOBS[lob.job || 'bank'].brief}</p>
       <p class="dim">Walk in as customers and look around. Nothing counts until the masks go on.</p>
       <button data-a="bp">Study the blueprint</button>
@@ -364,10 +372,13 @@ ui.addEventListener('click', e => {
   if (a === 'host') connect(true);
   else if (a === 'join') { const code = ($('#code').value || '').toUpperCase().trim(); if (code.length !== 4) { G.err = 'Crew codes are four letters.'; render(); } else connect(false, code); }
   else if (a === 'leave') toTitle();
+  else if (a === 'resume') { G.started = true; $('#gl').requestPointerLock(); }
+  else if (a === 'quit') { if (G.role === 'guest') toTitle(); else if (G.S && !G.S.over) abort(G.S); }
   else if (a === 'bp') { G.bp = !G.bp; render(); }
   else if (a === 'cls') { s.cls = v; saveSave(s); sendMe(); render(); }
   else if (a === 'perk') { const c = s.cl[s.cls]; if (perkPoints(c) > 0 && !c.perks.includes(v)) { c.perks.push(v); saveSave(s); sendMe(); render(); } }
-  else if (a === 'job' && G.role !== 'guest') { G.lobby.job = v; setJob(v); pushLobby(); }
+  else if (a === 'all') { s.all = 1; saveSave(s); render(); }
+  else if (a === 'job' && G.role !== 'guest' && unlocked(v)) { G.lobby.job = v; setJob(v); pushLobby(); }
   else if (a === 'fav' && G.role !== 'guest') { G.lobby.favor = v; pushLobby(); }
   else if (a === 'fill' && G.role !== 'guest') { G.lobby.fill = b.checked; pushLobby(); }
   else if (a === 'start' && G.role !== 'guest') hostStart();
@@ -396,7 +407,7 @@ function step(now, draw) {
     if (draw) { renderFrame(S, me, dt, camS); drawHud(dt); }
     if (S.over) {
       if (!G.rewarded) { G.rewarded = true; reward(); sfx(S.over.ok ? 'win' : 'lose'); if (G.role === 'host') netSend('{"t":"snap","s":' + snapshot(S) + '}'); }
-      G.overT += dt; if (G.overT > 3) { G.phase = 'result'; document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
+      G.overT += dt; if (G.overT > 3) { G.paused = undefined; G.phase = 'result'; document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
     }
   } else if (R.scene && draw) menuFrame(dt);
   IN.pressed = {};

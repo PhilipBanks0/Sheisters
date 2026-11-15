@@ -357,6 +357,7 @@ function interDone(S, it, info, p) {
     case 'rev': it.p.dn = 0; it.p.hp = has(p, 'feet') ? 100 : 50; msg(S, p.name + ' got ' + it.p.name + ' back up.', 'good'); sfx(S, 'abil', it); break;
   }
 }
+export function abort(S) { finish(S, false, 'The boss called it off.'); }
 function finish(S, ok, why) {
   if (S.over) return;
   const humans = S.pl.filter(p => !p.bot), cut = S.pl.some(p => has(p, 'cut')) ? 1.15 : 1;
