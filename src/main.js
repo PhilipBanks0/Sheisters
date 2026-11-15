@@ -1,6 +1,6 @@
 // SHEISTERS — client: menus, controls, networking, HUD, main loop.
 import { L, groundAt, moveCircle, rayT, buildLevel, restricted } from './level.js';
-import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, JOBS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
+import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, JOBS, GUNS, ARMOR, CARS, BRIBES, gunOf, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
 import { abort, createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
 import { sfx, music, unlockAudio, setVol } from './audio.js';
@@ -70,7 +70,7 @@ function onNet(m) {
         if (p) { p.left = 0; p.dn = p.wasDn === 2 ? 2 : 0; p.hp = Math.max(p.hp, 50); p.x = L.van.x - 1.5; p.y = 0; p.z = L.van.z - .5; say(p.name + ' is back on the line.', 'good'); } }
       else { G.lobby.seats = G.lobby.seats.filter(s => s.id !== m.id); if (G.S) { const p = G.S.pl.find(p => p.id === m.id); if (p && !p.left) { p.left = 1; p.wasDn = p.dn; p.dn = 2; p.it = null; say(p.name + ' lost the line. They can rejoin with the crew code.', 'warn'); } } }
       pushLobby();
-    } else if (m.t === 'me') { const s = G.lobby.seats.find(s => s.id === m.from); if (s) { s.name = String(m.name || 'Crook').slice(0, 14); s.cls = CLASSES[m.cls] ? m.cls : 'ghost'; s.lvl = m.lvl | 0; s.perks = (m.perks || []).filter(x => typeof x === 'string').slice(0, 5); s.task = TASKS[m.task] ? m.task : ''; pushLobby(); } }
+    } else if (m.t === 'me') { const s = G.lobby.seats.find(s => s.id === m.from); if (s) { s.name = String(m.name || 'Crook').slice(0, 14); s.cls = CLASSES[m.cls] ? m.cls : 'ghost'; s.lvl = m.lvl | 0; s.perks = (m.perks || []).filter(x => typeof x === 'string').slice(0, 5); s.task = TASKS[m.task] ? m.task : ''; s.gun = GUNS[m.gun] ? m.gun : ''; s.armor = Math.max(0, Math.min(3, m.armor | 0)); pushLobby(); } }
     else if (m.t === 'p' && G.S) { const p = G.S.pl.find(p => p.id === m.from); if (p && !p.dn && Array.isArray(m.v)) { [p.x, p.y, p.z, p.yaw, p.pitch, p.cr, p.mv] = m.v; p.it = m.it || null; } else if (p) p.it = null; }
     else if (m.t === 'ev' && G.S) playerEvent(G.S, G.S.pl.find(p => p.id === m.from), m.e || {});
   } else {
@@ -81,7 +81,7 @@ function onNet(m) {
 }
 function pushLobby() { G.lobby.seats.forEach((s, i) => s.ch = i); netSend({ t: 'lobby', lobby: G.lobby }); if (G.phase === 'hideout') render(); }
 function sendMe() {
-  const c = G.save.cl[G.save.cls], mine = { name: G.save.name || 'Crook', cls: G.save.cls, lvl: c.lvl, perks: c.perks, task: G.task || '' };
+  const c = G.save.cl[G.save.cls], mine = { name: G.save.name || 'Crook', cls: G.save.cls, lvl: c.lvl, perks: c.perks, task: G.task || '', gun: G.save.gun, armor: G.save.own.armor };
   if (G.role === 'guest') netSend(Object.assign({ t: 'me' }, mine));
   else { Object.assign(G.lobby.seats.find(s => s.id === G.id), mine); pushLobby(); }
 }
@@ -99,11 +99,11 @@ function startLobby(role, id, code) {
 function hostStart() {
   const f = FAVORS[G.lobby.favor]; if (G.save.cash < f.price) { G.lobby.favor = 'none'; return pushLobby(); }
   G.save.cash -= f.price; saveSave(G.save);
-  const seats = G.lobby.seats.map(s => ({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks, task: s.task || '' }));
+  const seats = G.lobby.seats.map(s => ({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks, task: s.task || '', gun: s.gun || '', armor: s.armor | 0 }));
   if (G.lobby.fill) { const used = new Set(seats.map(s => s.cls)); for (let i = seats.length; i < 4; i++) { const cls = CLASS_IDS.find(c => !used.has(c)) || 'muscle'; used.add(cls); seats.push({ id: 10 + i, name: CREW[i].name, ch: i, cls, perks: [], bot: true }); } }
   if (G.lobby.job !== L.job) setJob(G.lobby.job);
   netSend({ t: 'start', job: L.job });
-  beginHeist(createState(seats, G.lobby.favor));
+  beginHeist(createState(seats, G.lobby.favor, { car: G.save.car, bribes: G.save.own.bribes }));
 }
 function setJob(job) { buildLevel(job); buildScene(); }
 function beginHeist(S) {
@@ -141,8 +141,8 @@ function aimPoint(S, cx, cy, cz, fx, fy, fz) {
 const camS = { x: 0, y: 5, z: 10, tx: 0, ty: 1, tz: 0, aim: false };
 function control(dt) {
   const S = G.S, p = myP(); if (!p) return;
-  if (!me.local) { me.local = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: -.05, cr: 0, mv: 0 }; me.ammo = CLASSES[p.cls].gun.mag; }
-  const l = me.local, pad = readPad(dt), gun = CLASSES[p.cls].gun, P = IN.pressed, alive = p.dn === 0 && !S.over;
+  if (!me.local) { me.local = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: -.05, cr: 0, mv: 0 }; me.ammo = gunOf(p).mag; }
+  const l = me.local, pad = readPad(dt), gun = gunOf(p), P = IN.pressed, alive = p.dn === 0 && !S.over;
   const sens = G.save.sens; l.yaw -= (IN.lx * .0023 + pad.lx) * sens; l.pitch = clamp(l.pitch - (IN.ly * .0021 + pad.ly) * sens, -1.15, 1.0); IN.lx = IN.ly = 0;
   const fx = Math.sin(l.yaw), fz = Math.cos(l.yaw), rx = -fz, rz = fx, cp = Math.cos(l.pitch), sp = Math.sin(l.pitch);
   let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + pad.mx, my = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + pad.my; const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
@@ -258,7 +258,7 @@ function drawHud(dt) {
 
   // ---- DOM panels (refreshed ~8 times a second)
   G.hudT = (G.hudT || 0) - dt; G.hintT -= dt; if (G.hudT > 0 && !G.best !== !G.lastBest) G.hudT = 0; if (G.hudT > 0) return; G.hudT = .12; G.lastBest = G.best;
-  const cls = CLASSES[p.cls], gun = cls.gun;
+  const cls = CLASSES[p.cls], gun = gunOf(p);
   tipsTick(.12, S, p, l);
   let det = 0; for (const n of S.npc) if (n.k === 'guard' && !isBody(n)) det = Math.max(det, n.det); for (const c of S.cams) det = Math.max(det, c.d);
   let banner, bc = '';
@@ -307,7 +307,7 @@ function render() {
   if (G.phase === 'result') {
     const o = G.S.over, r = G.reward;
     ui.innerHTML = `<div class="title"><h1 class="${o.ok ? 'good' : 'bad'}">${o.ok ? (o.stealth ? 'GHOSTS' : 'GETAWAY') : 'BUSTED'}</h1><h2>${esc(o.why)}</h2>
-      <div class="card res"><div><span>Loot in the van</span><b>${money(o.take)}</b></div>${o.stealth ? '<div><span>Nobody heard a thing</span><b>+25%</b></div>' : ''}${o.fees ? `<div><span>Cleanup for dead civilians</span><b>-${money(o.fees)}</b></div>` : ''}
+      <div class="card res"><div><span>Loot in the van</span><b>${money(o.take)}</b></div>${o.stealth ? '<div><span>Nobody heard a thing</span><b>+25%</b></div>' : ''}${o.judge ? '<div><span>The judge owed you one</span><b>40% kept</b></div>' : ''}${o.fees ? `<div><span>Cleanup for dead civilians</span><b>-${money(o.fees)}</b></div>` : ''}
         <div><span>Your cut (four-way split)</span><b>${money(o.share)}</b></div><div><span>${CLASSES[r.cls].name} experience</span><b>+${o.xp} XP${r.up ? ' · LEVEL ' + r.lvl + '!' : ''}</b></div><div><span>Time on the job</span><b>${Math.floor(o.time / 60)}:${String(o.time % 60).padStart(2, '0')}</b></div>
         <button data-a="back" class="big">Back to the hideout</button></div></div>`;
     return;
@@ -322,14 +322,14 @@ function render() {
       <div class="cash">${money(s.cash)}<small>your stash · ${s.jobs} jobs pulled</small></div>
       <div class="set"><label>Look sensitivity <input type="range" min=".3" max="2.5" step=".1" value="${s.sens}" data-s="sens"></label><label>Volume <input type="range" min="0" max="1" step=".05" value="${s.vol}" data-s="vol"></label></div>
       <button data-a="leave" class="ghost">Leave</button></section>
-    <section class="col wide"><h3>YOUR ROLE</h3>
+    <section class="col wide"><div class="tabs"><button data-a="tab" data-v="role" class="${G.tab !== 'shop' ? 'on' : ''}">YOUR ROLE</button><button data-a="tab" data-v="shop" class="${G.tab === 'shop' ? 'on' : ''}">THE SHOP · ${money(s.cash)}</button></div>${G.tab === 'shop' ? shopHtml() : `
       <div class="classes">${CLASS_IDS.map(id => `<button data-a="cls" data-v="${id}" class="cls ${id === s.cls ? 'on' : ''}" style="--c:${CLASSES[id].color}"><b>${CLASSES[id].name}</b><span>${CLASSES[id].tag}</span><em>Level ${s.cl[id].lvl}</em></button>`).join('')}</div>
       <p>${esc(C.blurb)}</p>
       <div class="kit"><div><b>${esc(C.gun.name)}</b>${C.gun.silent ? ' — silent' : C.gun.pellets ? ' — close range' : C.gun.auto ? ' — full auto' : ''}</div><div><b>[Q] ${esc(C.ability.name)}</b> — ${esc(C.ability.desc)}</div></div>
       <div class="xp"><i style="width:${c.lvl >= 10 ? 100 : c.xp / xpFor(c.lvl) * 100}%"></i><span>Level ${c.lvl}${c.lvl >= 10 ? ' (max)' : ' · ' + c.xp + ' / ' + xpFor(c.lvl) + ' XP'} · ${pts} skill point${pts === 1 ? '' : 's'}</span></div>
       <div class="perks">${C.perks.map(k => { const own = c.perks.includes(k.id); return `<button data-a="perk" data-v="${k.id}" class="perk ${own ? 'own' : pts ? 'can' : ''}" ${own || !pts ? 'disabled' : ''}><b>${esc(k.name)}</b><span>${esc(k.desc)}</span></button>`; }).join('')}</div>
-      <p class="dim">A skill point every second level. Experience comes from the take — bigger and quieter jobs pay more.</p></section>
-    <section class="col"><h3>THE JOB</h3><div class="jobs">${Object.keys(JOBS).map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 3 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
+      <p class="dim">A skill point every second level. Experience comes from the take — bigger and quieter jobs pay more.</p>`}</section>
+    <section class="col"><h3>THE JOB</h3><div class="jobs">${['bodega', 'jewel', 'bank'].map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 3 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
       <p class="dim">${JOBS[lob.job || 'bank'].brief}</p>
       <p class="dim">Walk in as customers and look around. Nothing counts until the masks go on.</p>
       <button data-a="bp">Study the blueprint</button>
@@ -339,6 +339,17 @@ function render() {
       ${host ? `<button data-a="start" class="big">Pull the job${fav.price ? ' (' + money(fav.price) + ')' : ''}</button>` : '<p class="wait">Waiting for the boss to start the job…</p>'}
       <p class="dim soon">Next scores being rebuilt: Corner Bodega · Pawn Shop · Armored Truck · Bullion Depository</p></section></div>`;
   if (G.bp) blueprintOverlay();
+}
+function shopHtml() {
+  const s = G.save, o = s.own, host = G.role !== 'guest';
+  const item = (a, v, name, desc, state, price, on) => `<button data-a="${a}" data-v="${v}" class="fav ${on ? 'on' : ''}" ${state === 'buy' && s.cash < price ? 'disabled' : ''}><b>${esc(name)}</b> <em>${state === 'buy' ? money(price) : state}</em><span>${esc(desc)}</span></button>`;
+  const cg = CLASSES[s.cls].gun;
+  return `<p class="dim">Bought once, kept for good. Guns and armour are yours on any crew; the car and the bribes count when <b>you</b> are the boss.</p>
+    <h4>HARDWARE</h4>${item('gun', '', cg.name + ' (' + CLASSES[s.cls].name + ' issue)', cg.silent ? 'Silent. The only quiet gun in the game.' : 'Comes with the job.', s.gun ? 'owned' : 'equipped', 0, !s.gun)}
+    ${Object.keys(GUNS).map(k => item('gun', k, GUNS[k].name, GUNS[k].desc, o.guns.includes(k) ? (s.gun === k ? 'equipped' : 'owned') : 'buy', GUNS[k].price, s.gun === k)).join('')}
+    <h4>BODY ARMOUR</h4>${o.armor >= 3 ? item('none', '', 'Level 3 plates', '+' + ARMOR.per * 3 + ' armour on every job.', 'maxed', 0, true) : item('armor', '', 'Armour level ' + (o.armor + 1), '+' + ARMOR.per + ' armour on every job (now +' + o.armor * ARMOR.per + ').', 'buy', ARMOR.prices[o.armor])}
+    <h4>THE GETAWAY</h4>${Object.keys(CARS).map(k => item('car', k, CARS[k].name, CARS[k].desc, o.cars.includes(k) ? (s.car === k ? 'in use' : 'owned') : 'buy', CARS[k].price, s.car === k)).join('')}
+    <h4>FRIENDS DOWNTOWN</h4>${Object.keys(BRIBES).map(k => item('bribe', k, BRIBES[k].name, BRIBES[k].desc, o.bribes.includes(k) ? 'on the payroll' : 'buy', BRIBES[k].price, o.bribes.includes(k))).join('')}`;
 }
 // top-down plans drawn straight from the level geometry, so they can never be out of date
 
@@ -372,6 +383,11 @@ ui.addEventListener('click', e => {
   if (a === 'host') connect(true);
   else if (a === 'join') { const code = ($('#code').value || '').toUpperCase().trim(); if (code.length !== 4) { G.err = 'Crew codes are four letters.'; render(); } else connect(false, code); }
   else if (a === 'leave') toTitle();
+  else if (a === 'tab') { G.tab = v; render(); }
+  else if (a === 'gun') { const o = s.own; if (v && !o.guns.includes(v)) { if (s.cash < GUNS[v].price) return; s.cash -= GUNS[v].price; o.guns.push(v); sfx('cash'); } s.gun = v; saveSave(s); sendMe(); render(); }
+  else if (a === 'armor') { const o = s.own, pr = ARMOR.prices[o.armor]; if (o.armor < 3 && s.cash >= pr) { s.cash -= pr; o.armor++; sfx('cash'); saveSave(s); sendMe(); render(); } }
+  else if (a === 'car') { const o = s.own; if (!o.cars.includes(v)) { if (s.cash < CARS[v].price) return; s.cash -= CARS[v].price; o.cars.push(v); sfx('cash'); } s.car = v; saveSave(s); render(); }
+  else if (a === 'bribe') { const o = s.own; if (!o.bribes.includes(v) && s.cash >= BRIBES[v].price) { s.cash -= BRIBES[v].price; o.bribes.push(v); sfx('cash'); saveSave(s); render(); } }
   else if (a === 'resume') { G.started = true; $('#gl').requestPointerLock(); }
   else if (a === 'quit') { if (G.role === 'guest') toTitle(); else if (G.S && !G.S.over) abort(G.S); }
   else if (a === 'bp') { G.bp = !G.bp; render(); }

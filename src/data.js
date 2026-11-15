@@ -89,6 +89,27 @@ export const JOBS = {
   jewel: { name: '47th St Fine Jewelers', hood: 'Diamond District', take: 'up to $95k',
     brief: 'A smaller score to learn the ropes. Two guards, two cameras, a showroom of customers. Eight display cases: smash them and the whole block hears it, or let a <b>Safecracker</b> cut the glass quietly. The real money is the safe in the owner\'s office behind the stock room. Officer Walsh carries the keycard for the back doors.' },
 };
+// ---- the shop: bought once with stash money, kept forever
+export const GUNS = {
+  snub: { name: '.38 Snubnose', price: 900, dmg: 30, cd: .42, spread: .03, mag: 6, snd: 'safecracker', desc: 'Loud, cheap, gets the point across.' },
+  nine: { name: '9mm Pistol', price: 3000, dmg: 24, cd: .2, spread: .022, mag: 15, snd: 'safecracker', desc: 'Faster trigger, tighter grouping.' },
+  sawed: { name: 'Sawed-Off', price: 8000, dmg: 15, pellets: 8, cd: .7, spread: .15, mag: 2, snd: 'muscle', desc: 'Eight pellets. Clears a doorway.' },
+  smg: { name: 'Street Sweeper SMG', price: 20000, dmg: 15, cd: .08, spread: .055, mag: 32, auto: true, snd: 'mastermind', desc: 'Sprays the whole block.' },
+  rifle: { name: 'Assault Rifle', price: 55000, dmg: 32, cd: .12, spread: .02, mag: 30, auto: true, snd: 'cop', desc: 'Punches through tactical units.' },
+};
+export const ARMOR = { prices: [3000, 12000, 40000], per: 30 };
+export const CARS = {
+  van: { name: "Plumber's Van", price: 0, time: 3, desc: 'Nobody looks twice at a plumber. Three seconds to get rolling.' },
+  bruiser: { name: 'Bronx Bruiser V8 engine', price: 5000, time: 1.6, desc: 'A real engine under the hood. Rolling in half the time.' },
+  suv: { name: 'Armored getaway rig', price: 70000, time: .8, desc: 'Plated and tuned. Gone almost before the doors shut.' },
+};
+export const BRIBES = {
+  beat: { name: 'Beat Cop on the Take', price: 2000, desc: 'He walks slow. The first police wave takes 30% longer.' },
+  dispatch: { name: '911 Dispatcher', price: 12000, desc: 'Calls get "lost". One fewer unit in every wave.' },
+  judge: { name: 'Night Court Judge', price: 25000, desc: 'Busted? The crew still keeps 40% of what was already in the van.' },
+  captain: { name: 'Precinct Captain', price: 45000, desc: 'Waves come 40% further apart.' },
+};
+export const gunOf = p => GUNS[p.gun] || CLASSES[p.cls].gun;
 export const xpFor = lvl => 60 + lvl * 45;
 
 const KEY = 'sheisters-save-v2';
@@ -99,6 +120,7 @@ export function loadSave() {
     s = { name: '', ch: Math.floor(Math.random() * 4), cls: 'mastermind', cash: 2500, jobs: 0, cl: {} };
     try { const old = JSON.parse(localStorage.getItem('sheisters-save-v1')); if (old && old.cash > 0) s.cash += Math.round(old.cash); } catch (e) { }
   }
+  if (!s.own) s.own = { guns: [], armor: 0, cars: ['van'], bribes: [] }; if (!s.car) s.car = 'van'; if (s.gun === undefined) s.gun = '';
   for (const c of CLASS_IDS) if (!s.cl[c]) s.cl[c] = { lvl: 1, xp: 0, perks: [] };
   return s;
 }

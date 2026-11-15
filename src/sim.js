@@ -1,6 +1,6 @@
 // SHEISTERS — heist rules. The host runs update(); everyone reads the same plain state object S.
 import { L, restricted, setDoor, setVault, groundAt, rayT, los, findPath } from './level.js';
-import { CLASSES, CREW, CALLOUTS, money } from './data.js';
+import { CLASSES, CREW, CALLOUTS, CARS, gunOf, money } from './data.js';
 
 const H = new WeakMap();                         // host-only data per state
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -10,7 +10,7 @@ export const has = (p, perk) => p.perks.includes(perk);
 const AWARE = { alert: 1, fight: 1 }, UP = { idle: 1, walk: 1, sus: 1, alert: 1, fight: 1, flee: 1, cower: 1 };
 export const isBody = n => n.st === 'ko' || n.st === 'dead';
 
-export function createState(seats, favor) {
+export function createState(seats, favor, crew) {
   const S = { t: 0, loud: false, why: '', alarmT: -1, alarmWhy: '', wave: 0, waveT: 0, take: 0, civKills: 0, cards: { a: -1, b: -1 }, doors: {}, cams: [], camsOff: false, jamT: 0,
     vault: { open: false, drill: 0, prog: 0, need: 75, r: [-9, -9], rp: 0 }, bags: [], pl: [], npc: [], prog: {}, used: {}, marks: {}, pings: [], ev: [], favor, over: null, order: -1, radios: 0 };
   for (const k in L.doors) S.doors[k] = { o: 0, l: L.doors[k].locked ? 1 : 0, n: 0 };
@@ -19,7 +19,7 @@ export function createState(seats, favor) {
   seats.forEach((s, i) => {
     const sp = s.bot ? [[2.6, 4.6], [3.2, 8.2], [1.4, 6.6]][i % 3] : L.spawns[i % 4];
     S.pl.push({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks || [], bot: !!s.bot, x: sp[0], y: 0, z: sp[1], yaw: Math.PI, pitch: 0, cr: 0, mk: 0, mv: 0,
-      body: -1, task: s.task || '', hp: 100, ar: s.cls === 'muscle' ? 60 + ((s.perks || []).includes('skin') ? 50 : 0) : 20, dn: 0, dnT: 0, bags: 0, ab: 0, abCd: 0, it: null, sh: -9, wind: 0 });
+      body: -1, task: s.task || '', hp: 100, gun: s.gun || '', ar: (s.cls === 'muscle' ? 60 + ((s.perks || []).includes('skin') ? 50 : 0) : 20) + (s.armor | 0) * 30, dn: 0, dnT: 0, bags: 0, ab: 0, abCd: 0, it: null, sh: -9, wind: 0 });
   });
   const h = { npc: {}, bot: {}, tick: 0, nid: 0 };
   H.set(S, h);
@@ -34,7 +34,7 @@ export function createState(seats, favor) {
   });
   L.vaultBags.forEach((b, i) => S.bags.push({ id: i, x: b[0], y: i >= 6 ? -3.3 : -4, z: b[1], st: 0, by: -1, v: 11000 + (i * 1733) % 5000 }));
   (L.safeBags || []).forEach((b, i) => S.bags.push({ id: 50 + i, x: b[0], y: 0, z: b[1], st: 3, by: -1, v: 16000 + i * 3500 }));
-  S.job = L.job;
+  S.job = L.job; S.car = crew && CARS[crew.car] ? crew.car : 'van'; S.bribes = (crew && crew.bribes) || [];
   S.crate = L.crate ? { x: L.crate.x, y: L.crate.y, z: L.crate.z, st: 0, h: [] } : { x: 0, y: 0, z: 0, st: 2, h: [] };
   if (favor === 'sheet') for (const n of S.npc) if (n.k === 'guard') S.marks[n.id] = 1e9;
   syncLevel(S);
@@ -98,7 +98,7 @@ export function interInfo(S, it, p) {
     case 'van':
       if (p.bags > 0) return { label: 'Throw the bag in the van', time: .25 };
       if (!crewAtVan(S)) return { label: 'Leave — waiting on the crew', no: true };
-      return { label: S.take > 0 ? 'Drive off with ' + money(S.take) : 'Call it off and drive away', time: 3 };
+      return { label: S.take > 0 ? 'Drive off with ' + money(S.take) : 'Call it off and drive away', time: CARS[S.car].time };
     case 'guard': {
       const n = it.n, fx = Math.sin(n.yaw), fz = Math.cos(n.yaw), dx = p.x - n.x, dz = p.z - n.z, d = Math.hypot(dx, dz) || 1;
       if ((dx * fx + dz * fz) / d > .25) return p.mk || c === 'ghost' ? { label: 'Get behind him', no: true } : null;
@@ -177,7 +177,7 @@ export function startAlarm(S, delay, why) {
 }
 function goLoud(S, why) {
   if (S.loud) return;
-  S.loud = true; S.why = why; S.alarmT = -1; S.waveT = 28 + (S.favor === 'dispatch' ? 45 : 0);
+  S.loud = true; S.why = why; S.alarmT = -1; S.waveT = 28 * (S.bribes.includes('beat') ? 1.3 : 1) + (S.favor === 'dispatch' ? 45 : 0);
   for (const n of S.npc) if (n.k === 'guard' && UP[n.st]) n.st = 'fight';
   msg(S, 'ALARM! ' + why + '. Cops are on the way.', 'bad'); sfx(S, 'alarm');
 }
@@ -302,7 +302,7 @@ export function playerEvent(S, p, e) {
     msg(S, p.name + ': ' + A.name + '!', 'good'); sfx(S, 'abil', p); return;
   }
   if (e.k === 'shot' && p.mk) {
-    const G = CLASSES[p.cls].gun, n = G.pellets || 1; p.sh = S.t;
+    const G = gunOf(p), n = G.pellets || 1; p.sh = S.t;
     let dl = Math.hypot(e.d[0], e.d[1], e.d[2]) || 1; const D = e.d.map(v => v / dl);
     for (let i = 0; i < n; i++) {
       const d = [D[0] + (Math.random() - .5) * G.spread * 2, D[1] + (Math.random() - .5) * G.spread * 2, D[2] + (Math.random() - .5) * G.spread * 2];
@@ -317,7 +317,7 @@ export function playerEvent(S, p, e) {
           if (perp < r) { t = along / R; victim = c; }
         }
       }
-      ev(S, { k: 'shot', a: e.o, b: [e.o[0] + d[0] * R * t, e.o[1] + d[1] * R * t, e.o[2] + d[2] * R * t], w: p.cls, p: p.id, hit: victim ? 1 : 0 });
+      ev(S, { k: 'shot', a: e.o, b: [e.o[0] + d[0] * R * t, e.o[1] + d[1] * R * t, e.o[2] + d[2] * R * t], w: G.snd || p.cls, p: p.id, hit: victim ? 1 : 0 });
       if (victim) hurtNpc(S, victim, G.dmg * (p.cls === 'muscle' && has(p, 'buck') ? 1.25 : 1), p);
     }
     if (!S.loud) {
@@ -362,8 +362,9 @@ function finish(S, ok, why) {
   if (S.over) return;
   const humans = S.pl.filter(p => !p.bot), cut = S.pl.some(p => has(p, 'cut')) ? 1.15 : 1;
   const gross = ok ? S.take : 0, fees = S.civKills * 5000, stealth = ok && !S.loud && gross > 0;
-  const total = Math.max(0, Math.round((gross * cut * (stealth ? 1.25 : 1)) - fees));
-  S.over = { ok, why, take: gross, fees, stealth, total, share: Math.round(total / 4), xp: ok ? 25 + Math.round(total / 1500) + (stealth ? 30 : 0) : 12, time: Math.round(S.t), lost: humans.filter(p => p.dn === 2).length };
+  const judge = !ok && S.bribes.includes('judge') && S.take > 0;
+  const total = Math.max(0, Math.round(((judge ? S.take * .4 : gross) * cut * (stealth ? 1.25 : 1)) - fees));
+  S.over = { judge, ok, why, take: gross, fees, stealth, total, share: Math.round(total / 4), xp: ok ? 25 + Math.round(total / 1500) + (stealth ? 30 : 0) : 12, time: Math.round(S.t), lost: humans.filter(p => p.dn === 2).length };
 }
 
 // ------------------------------------------------------------------ host: main update
@@ -449,8 +450,8 @@ export function update(S, dt) {
   if (S.loud) {
     S.waveT -= dt;
     if (S.waveT <= 0) {
-      S.wave++; S.waveT = 27;
-      const alive = S.npc.filter(n => (n.k === 'cop' || n.k === 'swat') && UP[n.st]).length, count = Math.min(Math.min(3 + S.wave, 7), 11 - alive);
+      S.wave++; S.waveT = 27 * (S.bribes.includes('captain') ? 1.4 : 1);
+      const alive = S.npc.filter(n => (n.k === 'cop' || n.k === 'swat') && UP[n.st]).length, count = Math.min(Math.max(2, Math.min(3 + S.wave, 7) - (S.bribes.includes('dispatch') ? 1 : 0)), 11 - alive);
       for (let i = 0; i < count; i++) {
         const sp = L.copSpawns[(S.wave + i) % L.copSpawns.length], swat = S.wave >= 3 && i % 2 === 0;
         S.npc.push({ id: h.nid, k: swat ? 'swat' : 'cop', x: sp[0] + (Math.random() - .5) * 3, y: 0, z: sp[1] + (Math.random() - .5) * 3, yaw: 0, st: 'fight', det: 1, mv: 0, v: i, hp: swat ? 170 : 75 });
