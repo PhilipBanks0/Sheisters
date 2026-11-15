@@ -90,6 +90,8 @@ export const JOBS = {
     brief: 'Five cases of other people\'s gold up front and the real money in the back-room safe. Sal Moretti works the counter with a .38 under it. Officer Greer walks the back room and carries the key. One camera over the door.' },
   truck: { name: 'Armored Truck', hood: 'Meatpacking District', take: 'up to $55k',
     brief: 'A cash truck idling at a loading dock. No building, no cameras, no witnesses: just three armed couriers and three crates behind the rear doors. It can be done quietly if you are quick with the radios. If it goes loud, the police are there in <b>fourteen seconds</b>.' },
+  bullion: { name: 'Federal Bullion Depository', hood: 'Financial District', take: 'up to $500k',
+    brief: 'The score that ends careers. Same bones as First Empire, built by the same contractor, but hardened: <b>seven guards, five cameras</b>, a vault door that takes most of two minutes to drill, and police on the street sixteen seconds after the bell. The money is six gold pallets, and <b>every one needs two of you</b> to walk it out. You cannot do this one alone.' },
   jewel: { name: '47th St Fine Jewelers', hood: 'Diamond District', take: 'up to $95k',
     brief: 'A smaller score to learn the ropes. Two guards, two cameras, a showroom of customers. Eight display cases: smash them and the whole block hears it, or let a <b>Safecracker</b> cut the glass quietly. The real money is the safe in the owner\'s office behind the stock room. Officer Walsh carries the keycard for the back doors.' },
 };

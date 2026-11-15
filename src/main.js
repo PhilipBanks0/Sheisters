@@ -88,7 +88,7 @@ function sendMe() {
 
 // ------------------------------------------------------------------ flow
 function toTitle() { G.phase = 'title'; G.role = null; G.S = null; G.lobby = null; if (NET.ws) { const w = NET.ws; NET.ws = null; w.close(); } document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
-const NEED = { bodega: 0, pawn: 1, jewel: 2, truck: 3, bank: 4 }, ORDER = ['bodega', 'pawn', 'jewel', 'truck', 'bank'];
+const NEED = { bodega: 0, pawn: 1, jewel: 2, truck: 3, bank: 4, bullion: 6 }, ORDER = ['bodega', 'pawn', 'jewel', 'truck', 'bank', 'bullion'];
 const unlocked = k => G.save.all || G.save.jobs >= NEED[k];
 function startLobby(role, id, code) {
   if (role !== 'guest') { const best = ORDER.slice().reverse().find(unlocked); if (best !== L.job) setJob(best); }
@@ -245,7 +245,7 @@ function drawHud(dt) {
   const mark = (x, y, z, txt) => { const s = project(x, y, z); if (s.ok && Math.hypot(x - l.x, z - l.z) > 4) tag(clamp(s.x, 60, W - 60), clamp(s.y, 40, Hh - 40), txt, '#f5c518'); };
   if (S.vault.open || S.loud) mark(L.van.x + 1, 2.6, L.van.z, 'VAN');
   if (S.vault.open && S.bags.some(b => b.st === 0)) mark(L.lootMark[0], L.lootMark[1], L.lootMark[2], 'LOOT');
-  if (S.vault.open && S.crate.st === 0) { const s = project(S.crate.x, S.crate.y + 1.4, S.crate.z); if (s.ok && Math.hypot(S.crate.x - l.x, S.crate.z - l.z) < 14) tag(s.x, s.y, 'GOLD CRATE · 2 crooks · $60,000', '#ffd24a'); }
+  if (S.vault.open && S.crate.st === 0) { const s = project(S.crate.x, S.crate.y + 1.4, S.crate.z); if (s.ok && Math.hypot(S.crate.x - l.x, S.crate.z - l.z) < 14) tag(s.x, s.y, 'GOLD · 2 crooks · ' + money(S.crate.v) + (S.crate.n > 1 ? ' · ' + S.crate.n + ' left' : ''), '#ffd24a'); }
   if (p.body >= 0) for (const it of L.inter) if (it.type === 'stash') mark(it.x, 2, it.z, 'STASH');
   // speech bubbles
   for (const b of G.bubbles) { b.t -= dt; const e = b.p !== undefined ? S.pl.find(q => q.id === b.p) : S.npc.find(n => n.id === b.n); if (!e || (b.p === me.id)) continue; const s = project(e.x, e.y + 2.5, e.z); if (!s.ok || Math.hypot(e.x - l.x, e.z - l.z) > 30) continue; g2.globalAlpha = clamp(b.t, 0, 1); tag(s.x, s.y, b.s, '#111', 'rgba(245,238,220,.95)'); g2.globalAlpha = 1; }
@@ -309,6 +309,7 @@ function render() {
     ui.innerHTML = `<div class="title"><h1 class="${o.ok ? 'good' : 'bad'}">${o.ok ? (o.stealth ? 'GHOSTS' : 'GETAWAY') : 'BUSTED'}</h1><h2>${esc(o.why)}</h2>
       <div class="card res"><div><span>Loot in the van</span><b>${money(o.take)}</b></div>${o.stealth ? '<div><span>Nobody heard a thing</span><b>+25%</b></div>' : ''}${o.judge ? '<div><span>The judge owed you one</span><b>40% kept</b></div>' : ''}${o.fees ? `<div><span>Cleanup for dead civilians</span><b>-${money(o.fees)}</b></div>` : ''}
         <div><span>Your cut (four-way split)</span><b>${money(o.share)}</b></div><div><span>${CLASSES[r.cls].name} experience</span><b>+${o.xp} XP${r.up ? ' · LEVEL ' + r.lvl + '!' : ''}</b></div><div><span>Time on the job</span><b>${Math.floor(o.time / 60)}:${String(o.time % 60).padStart(2, '0')}</b></div>
+        <table class="stats"><tr><th>THE CREW</th><th>Takedowns</th><th>Kills</th><th>Loot hauled</th><th>Revives</th><th>Radios</th></tr>${G.S.pl.map(q => `<tr><td style="color:${CREW[q.ch % 4].color}">${esc(q.name)} <em>${CLASSES[q.cls].name}${q.bot ? ' · AI' : ''}</em></td><td>${q.stat.td}</td><td>${q.stat.kills}</td><td>${q.stat.bags}</td><td>${q.stat.rev}</td><td>${q.stat.radio}</td></tr>`).join('')}</table>
         <button data-a="back" class="big">Back to the hideout</button></div></div>`;
     return;
   }
@@ -329,7 +330,7 @@ function render() {
       <div class="xp"><i style="width:${c.lvl >= 10 ? 100 : c.xp / xpFor(c.lvl) * 100}%"></i><span>Level ${c.lvl}${c.lvl >= 10 ? ' (max)' : ' · ' + c.xp + ' / ' + xpFor(c.lvl) + ' XP'} · ${pts} skill point${pts === 1 ? '' : 's'}</span></div>
       <div class="perks">${C.perks.map(k => { const own = c.perks.includes(k.id); return `<button data-a="perk" data-v="${k.id}" class="perk ${own ? 'own' : pts ? 'can' : ''}" ${own || !pts ? 'disabled' : ''}><b>${esc(k.name)}</b><span>${esc(k.desc)}</span></button>`; }).join('')}</div>
       <p class="dim">A skill point every second level. Experience comes from the take — bigger and quieter jobs pay more.</p>`}</section>
-    <section class="col"><h3>THE JOB</h3><div class="jobs">${ORDER.map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 4 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
+    <section class="col"><h3>THE JOB</h3><div class="jobs">${ORDER.map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host && unlocked(k) ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${!host || unlocked(k) ? JOBS[k].take : 'pull ' + (NEED[k] - s.jobs) + ' more job' + (NEED[k] - s.jobs === 1 ? '' : 's') + ' to unlock'}</span></button>`).join('')}</div>${host && !s.all && s.jobs < 6 ? '<label class="chk"><input type="checkbox" data-a="all"> Skip ahead: open every job</label>' : ''}
       <p class="dim">${JOBS[lob.job || 'bank'].brief}</p>
       <p class="dim">Walk in as customers and look around. Nothing counts until the masks go on.</p>
       <button data-a="bp">Study the blueprint</button>
@@ -337,7 +338,7 @@ function render() {
       <h4>CALL IN A FAVOUR${host ? '' : ' (the boss decides)'}</h4>
       ${Object.keys(FAVORS).map(k => `<button data-a="fav" data-v="${k}" class="fav ${k === lob.favor ? 'on' : ''}" ${host && s.cash >= FAVORS[k].price ? '' : 'disabled'}><b>${esc(FAVORS[k].name)}</b> <em>${FAVORS[k].price ? money(FAVORS[k].price) : 'free'}</em><span>${esc(FAVORS[k].desc)}</span></button>`).join('')}
       ${host ? `<button data-a="start" class="big">Pull the job${fav.price ? ' (' + money(fav.price) + ')' : ''}</button>` : '<p class="wait">Waiting for the boss to start the job…</p>'}
-      <p class="dim soon">Still to come: Bullion Depository · Street Stickups</p></section></div>`;
+      <p class="dim soon">Still to come: Street Stickups</p></section></div>`;
   if (G.bp) blueprintOverlay();
 }
 function shopHtml() {

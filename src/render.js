@@ -140,7 +140,7 @@ export function buildScene() {
   R.crate = new T.Mesh(new T.BoxGeometry(1.5, .55, .8), new T.MeshStandardMaterial({ color: 0xd8a830, roughness: .3, metalness: .9, emissive: 0x3a2400, emissiveIntensity: .5 })); R.crate.castShadow = true; sc.add(R.crate);
   R.tracerMat = new T.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: .9 });
   R.drill = new T.Mesh(new T.BoxGeometry(.7, .35, .3), new T.MeshStandardMaterial({ color: 0xc8a020, roughness: .4, metalness: .6, emissive: 0x402000 })); R.drill.position.set(-4.5, -2.8, -15.5); R.drill.visible = false; sc.add(R.drill);
-  R.decor = (L.job === 'bank' ? decorate : decorateJewel)(sc, { glow, canvasTex, label });
+  R.decor = (L.vaultDoor ? decorate : decorateJewel)(sc, { glow, canvasTex, label });
   R.readers = [];
   for (const it of L.inter) if (it.type === 'reader') { const m = new T.Mesh(new T.BoxGeometry(.08, .3, .2), new T.MeshStandardMaterial({ color: 0x222222, emissive: 0xff2020, emissiveIntensity: 1 })); m.position.set(-4.82, -2.6, it.z); sc.add(m); R.readers.push(m); }
 }

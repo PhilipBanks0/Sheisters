@@ -19,7 +19,7 @@ export function createState(seats, favor, crew) {
   seats.forEach((s, i) => {
     const sp = s.bot ? [[2.6, 4.6], [3.2, 8.2], [1.4, 6.6]][i % 3] : L.spawns[i % 4];
     S.pl.push({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks || [], bot: !!s.bot, x: sp[0], y: 0, z: sp[1], yaw: Math.PI, pitch: 0, cr: 0, mk: 0, mv: 0,
-      body: -1, task: s.task || '', hp: 100, gun: s.gun || '', ar: (s.cls === 'muscle' ? 60 + ((s.perks || []).includes('skin') ? 50 : 0) : 20) + (s.armor | 0) * 30, dn: 0, dnT: 0, bags: 0, ab: 0, abCd: 0, it: null, sh: -9, wind: 0 });
+      stat: { td: 0, bags: 0, rev: 0, radio: 0, kills: 0 }, body: -1, task: s.task || '', hp: 100, gun: s.gun || '', ar: (s.cls === 'muscle' ? 60 + ((s.perks || []).includes('skin') ? 50 : 0) : 20) + (s.armor | 0) * 30, dn: 0, dnT: 0, bags: 0, ab: 0, abCd: 0, it: null, sh: -9, wind: 0 });
   });
   const h = { npc: {}, bot: {}, tick: 0, nid: 0 };
   H.set(S, h);
@@ -35,7 +35,7 @@ export function createState(seats, favor, crew) {
   L.vaultBags.forEach((b, i) => S.bags.push({ id: i, x: b[0], y: i >= 6 ? -3.3 : -4, z: b[1], st: 0, by: -1, v: 11000 + (i * 1733) % 5000 }));
   (L.safeBags || []).forEach((b, i) => S.bags.push({ id: 50 + i, x: b[0], y: 0, z: b[1], st: 3, by: -1, v: L.bagV + i * Math.round(L.bagV * .22) }));
   S.job = L.job; S.car = crew && CARS[crew.car] ? crew.car : 'van'; S.bribes = (crew && crew.bribes) || [];
-  S.crate = L.crate ? { x: L.crate.x, y: L.crate.y, z: L.crate.z, st: 0, h: [] } : { x: 0, y: 0, z: 0, st: 2, h: [] };
+  S.crate = L.crate ? { x: L.crate.x, y: L.crate.y, z: L.crate.z, st: 0, h: [], n: L.crate.n || 1, v: L.crate.v } : { x: 0, y: 0, z: 0, st: 2, h: [] };
   if (favor === 'sheet') for (const n of S.npc) if (n.k === 'guard') S.marks[n.id] = 1e9;
   syncLevel(S);
   return S;
@@ -134,7 +134,7 @@ export function bestInter(S, p, list) {
 export function objectives(S) {
   const o = [];
   if (S.over) return o;
-  if (S.job !== 'bank') {
+  if (!L.vaultDoor) {
     const cases = L.inter.filter(i => i.type === 'case'), done = cases.filter(i => S.used[i.id]).length, bags = S.bags.filter(b => b.st !== 3), sec = bags.filter(b => b.st === 2).length;
     if (!S.loud && S.npc.some(n => n.radio > 0)) o.push('ANSWER THE RADIO on the guard you dropped! (' + S.radios + '/4 used)');
     if (cases.length) o.push('Clean out the display cases (' + done + '/' + cases.length + ') — smashing is loud, a Safecracker cuts quietly');
@@ -157,7 +157,7 @@ export function objectives(S) {
   } else {
     const left = S.bags.filter(b => b.st !== 2 && b.st !== 3).length;
     o.push(left ? 'Haul the bags to the van (' + (S.bags.length - left) + '/' + S.bags.length + ')' : 'Every bag is in the van');
-    if (S.crate.st === 0) o.push('Bonus: two of you walk the gold crate out ($60,000)');
+    if (S.crate.st === 0) o.push(S.crate.n > 1 ? 'Two of you walk the gold out: ' + S.crate.n + ' pallets left, ' + money(S.crate.v) + ' each' : 'Bonus: two of you walk the gold crate out (' + money(S.crate.v) + ')');
     o.push('Get the whole crew to the van and drive');
   }
   if (!S.loud && S.npc.some(n => n.radio > 0)) o.unshift('ANSWER THE RADIO on the guard you dropped! (' + S.radios + '/4 used)');
@@ -205,7 +205,7 @@ function hurtNpc(S, n, dmg, by) {
   if (quiet) dmg *= 4;
   n.hp -= dmg;
   if (n.hp <= 0) {
-    n.st = 'dead'; n.mv = 0; n.det = 0; if (quiet) radioCheck(S, n);
+    n.st = 'dead'; n.mv = 0; n.det = 0; if (quiet) radioCheck(S, n); if (by && n.k !== 'civ') by.stat.kills++;
     if (n.k === 'civ') { S.civKills++; msg(S, 'A civilian is dead. That costs the crew $5,000 in cleanup.', 'bad'); }
     if (n.k === 'guard' && by && has(by, 'clean')) n.hid = 1;
   } else if (n.k === 'guard' && !AWARE[n.st]) alertGuard(S, n, by);
@@ -333,7 +333,7 @@ function interDone(S, it, info, p) {
     case 'door': { const d = S.doors[it.door]; if (d.l) { d.l = 0; d.o = 1; sfx(S, 'unlock', it); } else { d.o = d.o ? 0 : 1; sfx(S, 'door', it); } break; }
     case 'console': S.used.console = 1; S.camsOff = true; msg(S, p.name + ' killed the camera feed.', 'good'); sfx(S, 'unlock', it); break;
     case 'desk': S.used.desk = 1; S.cards.b = p.id; msg(S, p.name + " found the manager's keycard.", 'good'); sfx(S, 'card', it); break;
-    case 'drill': if (S.vault.drill === 0) { S.vault.need = 75 / (p.cls === 'safecracker' ? 2 : 1) / (has(p, 'thermite') ? 1.4 : 1); S.vault.nojam = has(p, 'bits') ? 1 : 0; h.jamAt = S.vault.need * (.3 + Math.random() * .3); msg(S, 'Drill is running. Keep them off it.', ''); }
+    case 'drill': if (S.vault.drill === 0) { S.vault.need = 75 * L.drillMul / (p.cls === 'safecracker' ? 2 : 1) / (has(p, 'thermite') ? 1.4 : 1); S.vault.nojam = has(p, 'bits') ? 1 : 0; h.jamAt = S.vault.need * (.3 + Math.random() * .3); msg(S, 'Drill is running. Keep them off it.', ''); }
       S.vault.drill = 1; sfx(S, 'unlock', it); break;
     case 'till': case 'depbox': S.used[it.id] = 1; S.take += it.value; ev(S, { k: 'cash', v: it.value, x: it.x, y: it.y, z: it.z }); sfx(S, 'cash', it); break;
     case 'case': S.used[it.id] = 1; S.take += it.value; ev(S, { k: 'cash', v: it.value, x: it.x, y: it.y, z: it.z }); sfx(S, info.smash ? 'smash' : 'cash', it);
@@ -341,20 +341,20 @@ function interDone(S, it, info, p) {
       break;
     case 'safe': S.used.safe = 1; for (const b of S.bags) if (b.st === 3) b.st = 0; msg(S, p.name + ' cracked the safe. Bag the stones!', 'good'); sfx(S, 'vault', it); break;
     case 'van':
-      if (p.bags > 0) { for (const b of S.bags) if (b.st === 1 && b.by === p.id) { b.st = 2; b.by = -1; S.take += b.v; ev(S, { k: 'cash', v: b.v, x: it.x, y: 1.5, z: it.z }); } p.bags = 0; sfx(S, 'cash', it); }
+      if (p.bags > 0) { for (const b of S.bags) if (b.st === 1 && b.by === p.id) { b.st = 2; b.by = -1; S.take += b.v; p.stat.bags++; ev(S, { k: 'cash', v: b.v, x: it.x, y: 1.5, z: it.z }); } p.bags = 0; sfx(S, 'cash', it); }
       else finish(S, true, S.take > 0 ? 'Clean getaway.' : 'You walked away empty-handed.');
       break;
     case 'guard':
       if (info.pick) { it.n.card = 0; S.cards.a = p.id; msg(S, p.name + " lifted a keycard off " + it.n.nm + '.', 'good'); sfx(S, 'card', it); }
-      else { it.n.st = 'ko'; it.n.mv = 0; it.n.det = 0; if (has(p, 'clean')) it.n.hid = 1; sfx(S, 'thud', it); radioCheck(S, it.n); }
+      else { p.stat.td++; it.n.st = 'ko'; it.n.mv = 0; it.n.det = 0; if (has(p, 'clean')) it.n.hid = 1; sfx(S, 'thud', it); radioCheck(S, it.n); }
       break;
-    case 'radio': it.n.radio = 0; S.radios++; ev(S, { k: 'say', p: p.id, s: ['Yeah, all quiet here. Over.', 'False alarm, sweetheart. Over and out.', 'All clear.', 'Uh — everything is fine! We are fine. How are you?'][p.ch % 4] }); if (S.radios >= 4) msg(S, 'Dispatch is getting suspicious. No more radios can be answered.', 'warn'); break;
+    case 'radio': it.n.radio = 0; S.radios++; p.stat.radio++; ev(S, { k: 'say', p: p.id, s: ['Yeah, all quiet here. Over.', 'False alarm, sweetheart. Over and out.', 'All clear.', 'Uh — everything is fine! We are fine. How are you?'][p.ch % 4] }); if (S.radios >= 4) msg(S, 'Dispatch is getting suspicious. No more radios can be answered.', 'warn'); break;
     case 'body': it.n.card = 0; S.cards.a = p.id; msg(S, p.name + " took " + it.n.nm + "'s keycard.", 'good'); sfx(S, 'card', it); break;
     case 'bag': it.b.st = 1; it.b.by = p.id; p.bags++; sfx(S, 'bag', it); break;
     case 'corpse': it.n.by = p.id; p.body = it.n.id; sfx(S, 'bag', it); break;
     case 'stash': { const n = S.npc.find(n => n.id === p.body); if (n) { n.hid = 1; n.by = -1; } p.body = -1; msg(S, p.name + ' stashed a body in the ' + it.name + '.', 'good'); sfx(S, 'thud', it); break; }
     case 'crate': if (S.crate.h.length < 2) { S.crate.h.push(p.id); sfx(S, 'bag', it); if (S.crate.h.length === 2) msg(S, 'Two on the crate. Walk it out together!', 'good'); } break;
-    case 'rev': it.p.dn = 0; it.p.hp = has(p, 'feet') ? 100 : 50; msg(S, p.name + ' got ' + it.p.name + ' back up.', 'good'); sfx(S, 'abil', it); break;
+    case 'rev': p.stat.rev++; it.p.dn = 0; it.p.hp = has(p, 'feet') ? 100 : 50; msg(S, p.name + ' got ' + it.p.name + ' back up.', 'good'); sfx(S, 'abil', it); break;
   }
 }
 export function abort(S) { finish(S, false, 'The boss called it off.'); }
@@ -393,7 +393,7 @@ export function update(S, dt) {
     C.h = hs.filter(p => Math.hypot(p.x - C.x, p.z - C.z) < 3.2).map(p => p.id);
     if (C.h.length === 2) {
       C.x = (hs[0].x + hs[1].x) / 2; C.z = (hs[0].z + hs[1].z) / 2; const g = groundAt(C.x, Math.max(hs[0].y, hs[1].y) + .5, C.z); if (g > -50) C.y = g;
-      if (Math.hypot(C.x - L.van.x, C.z - L.van.z) < 3 && Math.abs(C.y) < .5) { C.st = 2; C.h = []; S.take += L.crate.v; ev(S, { k: 'cash', v: L.crate.v, x: C.x, y: 1.5, z: C.z }); msg(S, 'The gold crate is in the van!', 'good'); sfx(S, 'cash'); }
+      if (Math.hypot(C.x - L.van.x, C.z - L.van.z) < 3 && Math.abs(C.y) < .5) { hs.forEach(q => q.stat.bags++); C.n--; C.h = []; if (C.n > 0) { C.x = L.crate.x; C.y = L.crate.y; C.z = L.crate.z; } else C.st = 2; S.take += L.crate.v; ev(S, { k: 'cash', v: L.crate.v, x: C.x, y: 1.5, z: C.z }); msg(S, 'The gold crate is in the van!', 'good'); sfx(S, 'cash'); }
     }
   }
   // ---- held interactions

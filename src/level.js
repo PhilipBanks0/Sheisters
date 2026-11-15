@@ -446,11 +446,23 @@ function truck() {
   L.vaultBags = []; L.safeBags = [[-13.5, 10.1], [-13.5, 11.4], [-12.8, 10.75]];
 }
 
-export const JOB_IDS = ['bodega', 'pawn', 'jewel', 'truck', 'bank'];
+// ------------------------------------------------------------------ job six: the bullion depository (the bank's floor plan, hardened)
+function bullion() {
+  bank();
+  L.name = 'Federal Bullion Depository'; L.sign = 'FEDERAL BULLION DEPOSITORY';
+  L.crate = { x: -10.6, y: -4, z: -14.1, v: 70000, n: 6 }; L.vaultBags = L.vaultBags.slice(0, 4); L.waveFirst = 16; L.drillMul = 1.7;
+  const P = (x, z, y, wait) => ({ x, y: y || 0, z, wait: wait || 0 });
+  L.guards.push({ name: 'Sergeant Voss', route: [P(10, -8, 0, 2), P(-10, -8, 0, 2), P(-10, -2.2, 0, 1), P(10, -2.2, 0, 1)] });
+  L.guards.push({ name: 'Officer Lindqvist', route: [P(4, -15.5, 3.5, 4), P(12.6, -15.5, 3.5, 4)] });
+  L.cams.push({ id: 4, x: -13.4, y: 5, z: -.6, yaw: Math.atan2(10, -6), pitch: -.45, sweep: .5, range: 17, name: 'West lobby', floor: 0 });
+  for (const q of L.pins) if (q[3].startsWith('VAULT')) q[3] = 'VAULT · 4 bags + 6 gold pallets';
+}
+
+export const JOB_IDS = ['bodega', 'pawn', 'jewel', 'truck', 'bank', 'bullion'];
 export function buildLevel(job) {
   for (const k of ['boxes', 'ramps', 'lights', 'props', 'cams', 'inter', 'guards', 'civs']) L[k] = [];
   L.doors = {}; L.vaultDoor = null; L.crate = null; L.safeBags = null; L.cases = null;
-  const def = { jewel, bodega, pawn, truck }[job] || bank; L.signY = 0; L.objSafe = L.objLoose = null; L.bagV = 16000; L.waveFirst = 28; def(); L.job = def === bank ? 'bank' : job;
+  const def = { jewel, bodega, pawn, truck, bullion }[job] || bank; L.drillMul = 1; L.signY = 0; L.objSafe = L.objLoose = null; L.bagV = 16000; L.waveFirst = 28; def(); L.job = def === bank ? 'bank' : job;
   buildNav();
 }
 buildLevel('bank');
