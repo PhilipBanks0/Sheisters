@@ -1,7 +1,7 @@
 // SHEISTERS — the 3D view. Everything is built in code: no model or texture downloads.
 import { L } from './level.js';
 import { CREW } from './data.js';
-import { decorate } from './decor.js';
+import { decorate, decorateJewel } from './decor.js';
 const T = window.THREE;
 
 export const R = { scene: null, cam: null, gl: null, chars: new Map(), fx: [], t: 0 };
@@ -106,7 +106,8 @@ export function buildScene() {
     const half = (L.doors[k].ax === 'x' ? b.x1 - b.x0 : b.z1 - b.z0) / 2; m.castShadow = true;
     if (L.doors[k].ax === 'x') { g.position.set(b.x0, b.y0 + 1.1, (b.z0 + b.z1) / 2); m.position.x = half; } else { g.position.set((b.x0 + b.x1) / 2, b.y0 + 1.1, b.z0); m.position.z = half; }
     g.add(m); sc.add(g); R.doors[k] = { g, a: 0 }; }
-  { const b = L.vaultDoor, g = new T.Group(), m = new T.Mesh(new T.CylinderGeometry(1.25, 1.25, .45, 28), M('vaultdoor')); m.rotation.z = Math.PI / 2; m.position.set(0, 0, .9);
+  R.vault = null;
+  if (L.vaultDoor) { const b = L.vaultDoor, g = new T.Group(), m = new T.Mesh(new T.CylinderGeometry(1.25, 1.25, .45, 28), M('vaultdoor')); m.rotation.z = Math.PI / 2; m.position.set(0, 0, .9);
     const wheel = new T.Mesh(new T.TorusGeometry(.42, .05, 8, 20), M('rail')); wheel.rotation.y = Math.PI / 2; wheel.position.set(.3, 0, .9);
     g.position.set(-5, -2.8, -16.4); g.add(m, wheel); sc.add(g); R.vault = { g, a: 0, wheel }; }
   // lights
@@ -116,7 +117,7 @@ export function buildScene() {
     const p = new T.PointLight(0xffa850, 1.15, 20, 1.6); p.position.set(s[0], 5.8, s[1] + (s[1] < 8 ? .8 : -.8)); sc.add(p);
     const b = new T.Mesh(new T.SphereGeometry(.22, 8, 6), new T.MeshBasicMaterial({ color: 0xffc070 })); b.position.copy(p.position); sc.add(b); glow(p.position, 0xffa040, 3.5); }
   // signs
-  const sign = new T.Mesh(new T.PlaneGeometry(13, 1.6), label('FIRST EMPIRE SAVINGS', 1024, 128, 'bold 76px Georgia', '#ffe6a8', '#ffb030')); sign.position.set(0, 5.4, .22); sc.add(sign);
+  const sign = new T.Mesh(new T.PlaneGeometry(13, 1.6), label(L.sign, 1024, 128, 'bold 76px Georgia', '#ffe6a8', '#ffb030')); sign.position.set(0, L.job === 'bank' ? 5.4 : 3.95, .22); sc.add(sign);
   const neon = (txt, x, y, z, ry, col, glowc, w) => { const m = new T.Mesh(new T.PlaneGeometry(w, 1.3), label(txt, 512, 128, 'bold 84px Arial', col, glowc)); m.position.set(x, y, z); m.rotation.y = ry; sc.add(m); if (w > 4.2) { const p = new T.PointLight(new T.Color(glowc), 1.3, 13, 1.6); p.position.set(x, y, z + (ry ? -1 : 1)); sc.add(p); } };
   neon('LIQUOR', -12, 4.2, 17.9, Math.PI, '#ffd0e0', '#ff2a6a', 5); neon('DINER', 8, 4.4, 17.9, Math.PI, '#d0f4ff', '#28c8ff', 4.6); neon('PAWN', 27, 4, 17.9, Math.PI, '#e8ffd0', '#58ff58', 4);
   // road paint, van detail, vault gold shimmer
@@ -139,7 +140,7 @@ export function buildScene() {
   R.crate = new T.Mesh(new T.BoxGeometry(1.5, .55, .8), new T.MeshStandardMaterial({ color: 0xd8a830, roughness: .3, metalness: .9, emissive: 0x3a2400, emissiveIntensity: .5 })); R.crate.castShadow = true; sc.add(R.crate);
   R.tracerMat = new T.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: .9 });
   R.drill = new T.Mesh(new T.BoxGeometry(.7, .35, .3), new T.MeshStandardMaterial({ color: 0xc8a020, roughness: .4, metalness: .6, emissive: 0x402000 })); R.drill.position.set(-4.5, -2.8, -15.5); R.drill.visible = false; sc.add(R.drill);
-  R.decor = decorate(sc, { glow, canvasTex, label });
+  R.decor = (L.job === 'bank' ? decorate : decorateJewel)(sc, { glow, canvasTex, label });
   R.readers = [];
   for (const it of L.inter) if (it.type === 'reader') { const m = new T.Mesh(new T.BoxGeometry(.08, .3, .2), new T.MeshStandardMaterial({ color: 0x222222, emissive: 0xff2020, emissiveIntensity: 1 })); m.position.set(-4.82, -2.6, it.z); sc.add(m); R.readers.push(m); }
 }
@@ -244,7 +245,8 @@ export function renderFrame(S, me, dt, camState) {
   for (const [k, o] of R.chars) if (!seen.has(k)) { sc.remove(o.g); R.chars.delete(k); }
   // doors
   for (const k in R.doors) { const d = R.doors[k], st = S.doors[k], open = st && (st.o || st.n) ? 1 : 0; d.a += (open * 1.7 - d.a) * Math.min(1, dt * 8); d.g.rotation.y = L.doors[k].ax === 'x' ? -d.a : d.a; }
-  R.vault.a += ((S.vault.open ? 2.1 : 0) - R.vault.a) * Math.min(1, dt * 1.5); R.vault.g.rotation.y = R.vault.a; R.vault.wheel.rotation.x = R.vault.a * 4;
+  if (R.vault) { R.vault.a += ((S.vault.open ? 2.1 : 0) - R.vault.a) * Math.min(1, dt * 1.5); R.vault.g.rotation.y = R.vault.a; R.vault.wheel.rotation.x = R.vault.a * 4; }
+  if (R.decor && R.decor.cases) R.decor.cases.forEach((g, i) => { g.visible = !S.used['case' + i]; });
   R.drill.visible = S.vault.drill > 0; if (S.vault.drill === 1) R.drill.position.x = -4.5 + Math.sin(R.t * 70) * .01;
   if (R.readers) R.readers.forEach((m, i) => m.material.emissive.setHex(S.vault.open || S.t - S.vault.r[i] < .25 ? 0x20ff40 : 0xff2020));
   // cameras

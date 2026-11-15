@@ -1,6 +1,6 @@
 // SHEISTERS — client: menus, controls, networking, HUD, main loop.
-import { L, groundAt, moveCircle, rayT } from './level.js';
-import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
+import { L, groundAt, moveCircle, rayT, buildLevel } from './level.js';
+import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, JOBS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
 import { createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
 import { sfx, music, unlockAudio, setVol } from './audio.js';
@@ -72,9 +72,9 @@ function onNet(m) {
     else if (m.t === 'p' && G.S) { const p = G.S.pl.find(p => p.id === m.from); if (p && !p.dn && Array.isArray(m.v)) { [p.x, p.y, p.z, p.yaw, p.pitch, p.cr, p.mv] = m.v; p.it = m.it || null; } else if (p) p.it = null; }
     else if (m.t === 'ev' && G.S) playerEvent(G.S, G.S.pl.find(p => p.id === m.from), m.e || {});
   } else {
-    if (m.t === 'lobby') { G.lobby = m.lobby; if (G.phase === 'hideout') render(); }
-    else if (m.t === 'start') beginHeist(null);
-    else if (m.t === 'snap') { if (G.phase !== 'heist') beginHeist(null); G.S = m.s; syncLevel(G.S); takeEvents(G.S); }
+    if (m.t === 'lobby') { G.lobby = m.lobby; if (G.phase === 'hideout' && m.lobby.job && m.lobby.job !== L.job) setJob(m.lobby.job); if (G.phase === 'hideout') render(); }
+    else if (m.t === 'start') { if (m.job && m.job !== L.job) setJob(m.job); beginHeist(null); }
+    else if (m.t === 'snap') { if (m.s.job !== L.job) setJob(m.s.job); if (G.phase !== 'heist') beginHeist(null); G.S = m.s; syncLevel(G.S); takeEvents(G.S); }
   }
 }
 function pushLobby() { G.lobby.seats.forEach((s, i) => s.ch = i); netSend({ t: 'lobby', lobby: G.lobby }); if (G.phase === 'hideout') render(); }
@@ -88,7 +88,7 @@ function sendMe() {
 function toTitle() { G.phase = 'title'; G.role = null; G.S = null; G.lobby = null; if (NET.ws) { const w = NET.ws; NET.ws = null; w.close(); } document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
 function startLobby(role, id, code) {
   G.role = role; G.id = me.id = id; G.code = code; G.phase = 'hideout';
-  G.lobby = { seats: role === 'guest' ? [] : [{ id, name: G.save.name || 'Crook', cls: G.save.cls, lvl: 1, perks: [], ch: 0 }], favor: 'none', fill: true };
+  G.lobby = { seats: role === 'guest' ? [] : [{ id, name: G.save.name || 'Crook', cls: G.save.cls, lvl: 1, perks: [], ch: 0 }], favor: 'none', fill: true, job: L.job };
   sendMe(); render();
 }
 function hostStart() {
@@ -96,9 +96,11 @@ function hostStart() {
   G.save.cash -= f.price; saveSave(G.save);
   const seats = G.lobby.seats.map(s => ({ id: s.id, name: s.name, ch: s.ch, cls: s.cls, perks: s.perks, task: s.task || '' }));
   if (G.lobby.fill) { const used = new Set(seats.map(s => s.cls)); for (let i = seats.length; i < 4; i++) { const cls = CLASS_IDS.find(c => !used.has(c)) || 'muscle'; used.add(cls); seats.push({ id: 10 + i, name: CREW[i].name, ch: i, cls, perks: [], bot: true }); } }
-  netSend({ t: 'start' });
+  if (G.lobby.job !== L.job) setJob(G.lobby.job);
+  netSend({ t: 'start', job: L.job });
   beginHeist(createState(seats, G.lobby.favor));
 }
+function setJob(job) { buildLevel(job); buildScene(); }
 function beginHeist(S) {
   G.S = S; G.phase = 'heist'; G.feed = []; G.bubbles = []; G.rewarded = false; G.overT = 0; me.local = null; me.reload = 0; me.cd = 0; G.masked = false;
   buildScene(); ui.innerHTML = ''; ui.className = ''; hud.style.display = hc.style.display = 'block'; music('stealth');
@@ -205,6 +207,7 @@ function drawHud(dt) {
     const full = n.st === 'alert'; g2.fillStyle = 'rgba(8,9,14,.8)'; g2.fillRect(s.x - 22, s.y - 5, 44, 10); g2.fillStyle = full ? '#ff3030' : n.det > .4 ? '#ffb020' : '#f5e9c0'; g2.fillRect(s.x - 20, s.y - 3, 40 * n.det, 6);
     g2.font = 'bold 20px system-ui'; g2.fillText(full ? '!' : '?', s.x, s.y - 18);
   }
+  for (const n of S.npc) if (n.radio > 0 && !S.loud) { const s = project(n.x, n.y + 1.2, n.z); if (s.ok) tag(s.x, s.y, 'RADIO ' + Math.ceil(n.radio) + 's', '#fff', 'rgba(200,40,40,.9)'); }
   if (S.camMark > S.t || S.favor === 'sheet') L.cams.forEach((c, i) => { const s = project(c.x, c.y, c.z); if (s.ok) tag(s.x, s.y - 14, S.camsOff ? 'CAM OFF' : 'CAMERA', S.camsOff ? '#8a8a8a' : '#ffb020'); });
   // pings
   for (const pg of S.pings) { const s = project(pg.x, pg.y + .3, pg.z); if (!s.ok) continue; const q = S.pl.find(q => q.id === pg.by), col = q ? CREW[q.ch % 4].color : '#fff';
@@ -213,9 +216,9 @@ function drawHud(dt) {
   // objective markers
   const mark = (x, y, z, txt) => { const s = project(x, y, z); if (s.ok && Math.hypot(x - l.x, z - l.z) > 4) tag(clamp(s.x, 60, W - 60), clamp(s.y, 40, Hh - 40), txt, '#f5c518'); };
   if (S.vault.open || S.loud) mark(L.van.x + 1, 2.6, L.van.z, 'VAN');
-  if (S.vault.open && S.bags.some(b => b.st === 0)) mark(-9.5, -2.5, -16.5, 'LOOT');
+  if (S.vault.open && S.bags.some(b => b.st === 0)) mark(L.lootMark[0], L.lootMark[1], L.lootMark[2], 'LOOT');
   if (S.vault.open && S.crate.st === 0) { const s = project(S.crate.x, S.crate.y + 1.4, S.crate.z); if (s.ok && Math.hypot(S.crate.x - l.x, S.crate.z - l.z) < 14) tag(s.x, s.y, 'GOLD CRATE · 2 crooks · $60,000', '#ffd24a'); }
-  if (p.body >= 0) { mark(16.1, 2, -21, 'STASH'); mark(-12.4, 2, -19.2, 'STASH'); }
+  if (p.body >= 0) for (const it of L.inter) if (it.type === 'stash') mark(it.x, 2, it.z, 'STASH');
   // speech bubbles
   for (const b of G.bubbles) { b.t -= dt; const e = b.p !== undefined ? S.pl.find(q => q.id === b.p) : S.npc.find(n => n.id === b.n); if (!e || (b.p === me.id)) continue; const s = project(e.x, e.y + 2.5, e.z); if (!s.ok || Math.hypot(e.x - l.x, e.z - l.z) > 30) continue; g2.globalAlpha = clamp(b.t, 0, 1); tag(s.x, s.y, b.s, '#111', 'rgba(245,238,220,.95)'); g2.globalAlpha = 1; }
   G.bubbles = G.bubbles.filter(b => b.t > 0);
@@ -294,19 +297,19 @@ function render() {
       <div class="xp"><i style="width:${c.lvl >= 10 ? 100 : c.xp / xpFor(c.lvl) * 100}%"></i><span>Level ${c.lvl}${c.lvl >= 10 ? ' (max)' : ' · ' + c.xp + ' / ' + xpFor(c.lvl) + ' XP'} · ${pts} skill point${pts === 1 ? '' : 's'}</span></div>
       <div class="perks">${C.perks.map(k => { const own = c.perks.includes(k.id); return `<button data-a="perk" data-v="${k.id}" class="perk ${own ? 'own' : pts ? 'can' : ''}" ${own || !pts ? 'disabled' : ''}><b>${esc(k.name)}</b><span>${esc(k.desc)}</span></button>`; }).join('')}</div>
       <p class="dim">A skill point every second level. Experience comes from the take — bigger and quieter jobs pay more.</p></section>
-    <section class="col"><h3>THE JOB</h3><h4>First Empire Savings — Midtown</h4>
-      <p class="dim">Five guards, four cameras, a lobby full of witnesses. The vault is in the basement behind two card readers that have to be turned <b>at the same time</b>. Chief Mahoney wears one keycard in the security room; the manager keeps the other in his desk upstairs. No cards? Bring the drill and bring patience.</p>
+    <section class="col"><h3>THE JOB</h3><div class="jobs">${Object.keys(JOBS).map(k => `<button data-a="job" data-v="${k}" class="${k === lob.job ? 'on' : ''}" ${host ? '' : 'disabled'}>${esc(JOBS[k].name)}<span>${esc(JOBS[k].hood)} · ${JOBS[k].take}</span></button>`).join('')}</div>
+      <p class="dim">${JOBS[lob.job || 'bank'].brief}</p>
       <p class="dim">Walk in as customers and look around. Nothing counts until the masks go on.</p>
       <button data-a="bp">Study the blueprint</button>
       <h4>YOUR ASSIGNMENT</h4><select data-s="task">${Object.keys(TASKS).map(k => `<option value="${k}" ${k === (G.task || '') ? 'selected' : ''}>${esc(TASKS[k])}</option>`).join('')}</select>
       <h4>CALL IN A FAVOUR${host ? '' : ' (the boss decides)'}</h4>
       ${Object.keys(FAVORS).map(k => `<button data-a="fav" data-v="${k}" class="fav ${k === lob.favor ? 'on' : ''}" ${host && s.cash >= FAVORS[k].price ? '' : 'disabled'}><b>${esc(FAVORS[k].name)}</b> <em>${FAVORS[k].price ? money(FAVORS[k].price) : 'free'}</em><span>${esc(FAVORS[k].desc)}</span></button>`).join('')}
       ${host ? `<button data-a="start" class="big">Pull the job${fav.price ? ' (' + money(fav.price) + ')' : ''}</button>` : '<p class="wait">Waiting for the boss to start the job…</p>'}
-      <p class="dim soon">Next scores being rebuilt: Corner Bodega · Pawn Shop · Jewelry Store · Armored Truck · Bullion Depository</p></section></div>`;
+      <p class="dim soon">Next scores being rebuilt: Corner Bodega · Pawn Shop · Armored Truck · Bullion Depository</p></section></div>`;
   if (G.bp) blueprintOverlay();
 }
 // top-down plans drawn straight from the level geometry, so they can never be out of date
-const FLOORS = [['UPSTAIRS — offices', 3.5], ['GROUND — lobby, tellers, staff hall', 0], ['BASEMENT — vault', -4]];
+
 function drawBlueprint(cv, fy) {
   const g = cv.getContext('2d'), sc = 13, ox = 21, oz = 22, X = x => (x + ox) * sc, Z = z => (z + oz) * sc;
   g.fillStyle = '#0d2a4a'; g.fillRect(0, 0, cv.width, cv.height); g.strokeStyle = 'rgba(255,255,255,.06)';
@@ -318,18 +321,18 @@ function drawBlueprint(cv, fy) {
   g.font = 'bold 11px system-ui'; g.textAlign = 'center';
   const pin = (x, z, t, c) => { g.fillStyle = c; g.beginPath(); g.arc(X(x), Z(z), 5, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillText(t, X(x), Z(z) - 9); };
   const on = y => Math.abs(y - fy) < 1.5;
-  L.guards.forEach(gd => { const r = gd.route; if (!on(r[0].y)) return; g.strokeStyle = 'rgba(255,90,90,.8)'; g.setLineDash([4, 4]); g.beginPath(); r.forEach((p, i) => i ? g.lineTo(X(p.x), Z(p.z)) : g.moveTo(X(p.x), Z(p.z))); if (r.length > 2) g.closePath(); g.stroke(); g.setLineDash([]); pin(r[0].x, r[0].z, gd.card ? 'CHIEF + KEYCARD' : 'GUARD', '#ff5a5a'); });
-  L.cams.forEach((c, i) => { if ([0, 0, -4, 0][i] !== fy) return; g.fillStyle = 'rgba(255,190,40,.12)'; g.beginPath(); g.moveTo(X(c.x), Z(c.z)); g.arc(X(c.x), Z(c.z), c.range * sc, Math.PI / 2 - c.yaw - .65 - c.sweep, Math.PI / 2 - c.yaw + .65 + c.sweep); g.fill(); pin(c.x, c.z, 'CAM', '#ffbe28'); });
-  if (fy === 0) { pin(-12.5, -18.6, 'CAMERA CONSOLE', '#4dc3ff'); pin(L.van.x + 3, L.van.z, 'VAN', '#5fd38d'); pin(0, 0, 'FRONT DOOR', '#fff'); pin(14, -16, 'ALLEY DOOR', '#fff'); pin(16.1, -21, 'DUMPSTER', '#aaa'); pin(-12.4, -19.2, 'LOCKER', '#aaa'); pin(0, -19, 'STAIRS DOWN', '#fff'); pin(9, -19, 'STAIRS UP', '#fff'); }
-  if (fy === 3.5) pin(-9, -16.5, "MANAGER'S DESK + KEYCARD", '#f5c518');
-  if (fy === -4) { pin(-5, -17.2, 'READER', '#f5c518'); pin(-5, -13.9, 'READER', '#f5c518'); pin(-9.5, -16.4, 'VAULT · 8 bags + gold crate', '#5fd38d'); pin(11.5, -17, 'DEPOSIT BOXES', '#5fd38d'); }
+  L.guards.forEach(gd => { const r = gd.route; if (!on(r[0].y)) return; g.strokeStyle = 'rgba(255,90,90,.8)'; g.setLineDash([4, 4]); g.beginPath(); r.forEach((p, i) => i ? g.lineTo(X(p.x), Z(p.z)) : g.moveTo(X(p.x), Z(p.z))); if (r.length > 2) g.closePath(); g.stroke(); g.setLineDash([]); pin(r[0].x, r[0].z, gd.card ? 'GUARD + KEYCARD' : 'GUARD', '#ff5a5a'); });
+  L.cams.forEach((c, i) => { if (c.floor !== fy) return; g.fillStyle = 'rgba(255,190,40,.12)'; g.beginPath(); g.moveTo(X(c.x), Z(c.z)); g.arc(X(c.x), Z(c.z), c.range * sc, Math.PI / 2 - c.yaw - .65 - c.sweep, Math.PI / 2 - c.yaw + .65 + c.sweep); g.fill(); pin(c.x, c.z, 'CAM', '#ffbe28'); });
+  for (const q of L.pins) if (q[0] === fy) pin(q[1], q[2], q[3], q[4]);
+
+
 }
 function blueprintOverlay() {
   const d = document.createElement('div'); d.className = 'bp';
-  d.innerHTML = `<div class="bpin"><h3>FIRST EMPIRE SAVINGS — the janitor's drawings <button data-a="bp">Close</button></h3><div class="bprow">${FLOORS.map((f, i) => `<figure><canvas id="bp${i}" width="${i === 1 ? 572 : 390}" height="${i === 1 ? 430 : 130}"></canvas><figcaption>${f[0]}</figcaption></figure>`).join('')}</div>
+  d.innerHTML = `<div class="bpin"><h3>${esc(L.name.toUpperCase())} — the janitor's drawings <button data-a="bp">Close</button></h3><div class="bprow n${L.floors.length}">${L.floors.map((f, i) => `<figure><canvas id="bp${i}" width="${f[1] === 0 ? 572 : 390}" height="${f[1] === 0 ? 430 : 130}"></canvas><figcaption>${f[0]}</figcaption></figure>`).join('')}</div>
     <p class="dim"><b style="color:#ff5a5a">Red</b> guards and their rounds · <b style="color:#ffbe28">amber</b> camera arcs · <b style="color:#f5c518">gold</b> doors, keycards, readers · <b style="color:#5fd38d">green</b> the money and the way out. Stash bodies in the dumpster or the security-room locker.</p></div>`;
   ui.appendChild(d);
-  FLOORS.forEach((f, i) => { const cv = d.querySelector('#bp' + i), g = cv.getContext('2d'); if (i !== 1) { g.translate(-78, -18); } drawBlueprint(cv, f[1]); });
+  L.floors.forEach((f, i) => { const cv = d.querySelector('#bp' + i), g = cv.getContext('2d'); if (f[1] !== 0) { g.translate(-78, -18); } drawBlueprint(cv, f[1]); });
 }
 ui.addEventListener('click', e => {
   const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, v = b.dataset.v, s = G.save; unlockAudio(); sfx('click');
@@ -340,6 +343,7 @@ ui.addEventListener('click', e => {
   else if (a === 'bp') { G.bp = !G.bp; render(); }
   else if (a === 'cls') { s.cls = v; saveSave(s); sendMe(); render(); }
   else if (a === 'perk') { const c = s.cl[s.cls]; if (perkPoints(c) > 0 && !c.perks.includes(v)) { c.perks.push(v); saveSave(s); sendMe(); render(); } }
+  else if (a === 'job' && G.role !== 'guest') { G.lobby.job = v; setJob(v); pushLobby(); }
   else if (a === 'fav' && G.role !== 'guest') { G.lobby.favor = v; pushLobby(); }
   else if (a === 'fill' && G.role !== 'guest') { G.lobby.fill = b.checked; pushLobby(); }
   else if (a === 'start' && G.role !== 'guest') hostStart();

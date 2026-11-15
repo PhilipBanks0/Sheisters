@@ -73,3 +73,5 @@ input:not([type=checkbox]) { background: #0c0d13; border: 1px solid var(--line);
 .bprow canvas { display: block; border: 1px solid #2a5a8a; max-width: 100%; } .bprow figcaption { font-size: 11px; letter-spacing: .14em; color: #9fc4ee; margin-top: 4px; }
 select { font: inherit; color: inherit; background: #0c0d13; border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; width: 100%; margin-bottom: 10px; }
 .obj .task { color: var(--gold); font-weight: 700; margin-bottom: 4px; }
+.jobs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; } .jobs button { text-align: left; padding: 8px 10px; font-weight: 700; font-size: 13px; } .jobs button span { display: block; font-weight: 400; font-size: 11px; color: var(--dim); } .jobs button.on { border-color: var(--gold); background: #2a2410; opacity: 1; }
+.bprow.n1 { display: block; }

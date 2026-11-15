@@ -71,3 +71,28 @@ export function decorate(sc, h) {
   for (const l of L.lights) h.glow(new T.Vector3(l[0], l[1], l[2]), l[3], 1.5).material.opacity = .3;
   return { steam };
 }
+
+export function decorateJewel(sc, h) {
+  const std = (c, o) => new T.MeshStandardMaterial(Object.assign({ color: c, roughness: .5 }, o || {}));
+  const add = (geo, mat, x, y, z, o) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); if (o && o.rx) m.rotation.x = o.rx; if (o && o.ry) m.rotation.y = o.ry; sc.add(m); return m; };
+  const gems = [0x8af0ff, 0xff5a7a, 0x7aff9a, 0xffe07a, 0xd0a0ff], cases = [];
+  // every display case gets a tray of stones that vanishes when the case is emptied
+  L.cases.forEach(([x, z], i) => {
+    const g = new T.Group(); sc.add(g); cases.push(g);
+    const tray = new T.Mesh(new T.BoxGeometry(1.4, .04, .6), std(0x1a1030, { roughness: 1 })); tray.position.set(x, .93, z); g.add(tray);
+    for (let k = 0; k < 9; k++) { const c = gems[(i + k) % gems.length], m = new T.Mesh(new T.OctahedronGeometry(.05 + (k % 3) * .012), std(c, { roughness: .05, metalness: .4, emissive: c, emissiveIntensity: .55 })); m.position.set(x - .56 + k * .14, 1.0, z + ((k % 2) - .5) * .22); g.add(m); }
+    const s = h.glow(new T.Vector3(x, 1.15, z), 0xcfe8ff, 1.5); s.material.opacity = .28; sc.remove(s); g.add(s);
+  });
+  const plate = (txt, x, y, z, w, ry) => add(new T.PlaneGeometry(w, .42), h.label(txt, 512, 64, 'bold 40px Georgia', '#e8c870', '#000000'), x, y, z, { ry });
+  plate('DIAMONDS · GOLD · WATCHES', 0, 3.3, -7.82, 6); plate('PRIVATE', 2.6, 2.5, -7.82, 1.4); plate('OFFICE', -5.82, 2.5, -11, 1.4, Math.PI / 2);
+  add(new T.PlaneGeometry(3, 7.4), std(0x1a2a4a, { roughness: 1 }), 0, .012, -3.9, { rx: -Math.PI / 2 });
+  add(new T.TorusGeometry(.32, .05, 8, 20), std(0xc9a03a, { roughness: .25, metalness: .9 }), -12.55, .8, -11, { ry: Math.PI / 2 });
+  add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), 0, 1.2, -6.8);
+  const stripe = h.canvasTex(128, 32, (g) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#e8e0c8' : '#3a1f5a'; g.fillRect(i * 16, 0, 16, 32); } });
+  add(new T.BoxGeometry(5, .12, 1.9), new T.MeshLambertMaterial({ map: stripe }), 0, 2.95, 1.0, { rx: .16 });
+  const puddle = std(0x05070c, { roughness: .03, metalness: .9, transparent: true, opacity: .75 });
+  for (const [x, z, s] of [[-6, 8, 2.2], [3, 11, 1.6], [12, 6.5, 1.3], [-15, 10.5, 2.6], [20, 9, 2]]) { const p = add(new T.CircleGeometry(1, 18), puddle, x, .008, z, { rx: -Math.PI / 2 }); p.scale.set(s, s * .6, 1); }
+  const moon = h.glow(new T.Vector3(-70, 85, -120), 0xdde8ff, 34); moon.material.opacity = .9; moon.material.fog = false;
+  for (const l of L.lights) h.glow(new T.Vector3(l[0], l[1], l[2]), l[3], 1.5).material.opacity = .3;
+  return { steam: [], cases };
+}

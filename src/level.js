@@ -32,7 +32,10 @@ function door(id, ax, c, a0, a1, y0, o) {
 }
 
 // ------------------------------------------------------------------ build
-(function build() {
+function street() {
+  L.streetLamps = [[-20, 3.2], [-4, 14.8], [16, 3.2], [28, 14.8]];
+  L.spawns = [[-2.4, 2.6], [-.8, 2.9], [.8, 2.9], [2.4, 2.6]]; L.van = { x: 4.3, y: 0, z: 6.2, r: 4.2 };
+  L.copSpawns = [[-37, 9], [37, 9], [-37, 2], [37, 2]]; L.exits = [[-36, 2], [36, 2]];
   // ---- outdoors
   F(-40, 40, 0, 4, 0, 'sidewalk'); F(-40, 40, 4, 14, 0, 'asphalt'); F(-40, 40, 14, 18, 0, 'sidewalk');
   F(14, 19, -24, 0, 0, 'asphalt');                                   // east alley
@@ -46,6 +49,15 @@ function door(id, ax, c, a0, a1, y0, o) {
   B(-13, -8.6, 0, 1.4, 5, 6.9, 'car1', { car: true }); B(-25, -20.6, 0, 1.4, 11.2, 13.1, 'car2', { car: true }); B(22, 26.4, 0, 1.4, 5, 6.9, 'car3', { car: true });
   B(-6.4, -6.0, 0, 2.4, 1.3, 1.7, 'phone'); B(12.2, 12.8, 0, 1.1, 1.2, 1.8, 'hydrant', { opaque: false });
 
+}
+
+function bank() {
+  street();
+  L.name = 'First Empire Savings'; L.sign = 'FIRST EMPIRE SAVINGS'; L.floors = [['UPSTAIRS — offices', 3.5], ['GROUND — lobby, tellers, staff hall', 0], ['BASEMENT — vault', -4]];
+  L.restricted = (x, y, z) => !(x < -14 || x > 14 || z > 0 || z < -20) && (z < -9.8 || y < -1 || y > 2);
+  L.lootMark = [-9.5, -2.5, -16.5];
+  L.pins = [[0, -12.5, -18.6, 'CAMERA CONSOLE', '#4dc3ff'], [0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 14, -16, 'ALLEY DOOR', '#fff'], [0, 16.1, -21, 'DUMPSTER', '#aaa'], [0, -12.4, -19.2, 'LOCKER', '#aaa'], [0, 0, -19, 'STAIRS DOWN', '#fff'], [0, 9, -19, 'STAIRS UP', '#fff'],
+    [3.5, -9, -16.5, "MANAGER'S DESK + KEYCARD", '#f5c518'], [-4, -5, -17.2, 'READER', '#f5c518'], [-4, -5, -13.9, 'READER', '#f5c518'], [-4, -9.5, -16.4, 'VAULT · 8 bags + gold crate', '#5fd38d'], [-4, 11.5, -17, 'DEPOSIT BOXES', '#5fd38d']];
   // ---- floors
   F(-14, 14, -13, 0, 0, 'marble');                                    // lobby + tellers
   F(-14, -4, -20, -13, 0, 'tile'); F(-4, 4, -18, -13, 0, 'tile'); F(4, 14, -20, -13, 0, 'tile');   // back strip (hole for stairs down)
@@ -108,13 +120,12 @@ function door(id, ax, c, a0, a1, y0, o) {
   L.lights.push([-10.5, 2.8, -16.5, 0x88ccff, .8, 9], [4, 2.8, -15.5, 0xfff0d0, .8, 14], [0, 2.6, -11.6, 0xfff0d0, .7, 16],
     [3, -.9, -15.5, 0xffd9a0, .9, 13], [-9.5, -.9, -16, 0xd8e8ff, 1.0, 11], [11.5, -.9, -16.5, 0xffd9a0, .7, 8], [-8, 6.3, -16.5, 0xffd0a0, .9, 11], [6, 6.3, -15.5, 0xfff0d0, .7, 12],
     [16.5, 4, -15.5, 0xff8844, .9, 12]);
-  L.streetLamps = [[-20, 3.2], [-4, 14.8], [16, 3.2], [28, 14.8]];
 
   // ---- cameras
-  L.cams.push({ id: 0, x: 13.4, y: 5, z: -.6, yaw: Math.atan2(-10, -6), pitch: -.45, sweep: .5, range: 17, name: 'Lobby' });
-  L.cams.push({ id: 1, x: 13.5, y: 2.9, z: -13.5, yaw: Math.atan2(-10, -2.2), pitch: -.3, sweep: .25, range: 16, name: 'Staff hall' });
-  L.cams.push({ id: 2, x: 8.6, y: -.8, z: -13.5, yaw: Math.atan2(-10, -2), pitch: -.3, sweep: .3, range: 14, name: 'Vault hall' });
-  L.cams.push({ id: 3, x: 18.6, y: 3.6, z: -11.5, yaw: Math.atan2(-3.6, -4.5), pitch: -.6, sweep: .2, range: 9, name: 'Alley' });
+  L.cams.push({ id: 0, x: 13.4, y: 5, z: -.6, yaw: Math.atan2(-10, -6), pitch: -.45, sweep: .5, range: 17, name: 'Lobby', floor: 0 });
+  L.cams.push({ id: 1, x: 13.5, y: 2.9, z: -13.5, yaw: Math.atan2(-10, -2.2), pitch: -.3, sweep: .25, range: 16, name: 'Staff hall', floor: 0 });
+  L.cams.push({ id: 2, x: 8.6, y: -.8, z: -13.5, yaw: Math.atan2(-10, -2), pitch: -.3, sweep: .3, range: 14, name: 'Vault hall', floor: -4 });
+  L.cams.push({ id: 3, x: 18.6, y: 3.6, z: -11.5, yaw: Math.atan2(-3.6, -4.5), pitch: -.6, sweep: .2, range: 9, name: 'Alley', floor: 0 });
 
   // ---- people
   const P = (x, z, y, wait) => ({ x, y: y || 0, z, wait: wait || 0 });
@@ -142,21 +153,16 @@ function door(id, ax, c, a0, a1, y0, o) {
   I('stash0', 'stash', 16.1, 1, -21, { r: 2.2, name: 'dumpster' }); I('stash1', 'stash', -12.4, 1, -19.2, { r: 1.8, name: 'supply locker' });
   L.crate = { x: -10.6, y: -4, z: -14.1, v: 60000 };
   L.vaultBags = [[-12.2, -15.2], [-12.2, -16.4], [-12.2, -17.6], [-10.6, -18.4], [-9, -18.4], [-7.4, -18.4], [-9.5, -16.4], [-9.5, -15.4]];
-  L.spawns = [[-2.4, 2.6], [-.8, 2.9], [.8, 2.9], [2.4, 2.6]];
-  L.van = { x: 4.3, y: 0, z: 6.2, r: 4.2 };
-  L.copSpawns = [[-37, 9], [37, 9], [-37, 2], [37, 2]];
-  L.exits = [[-36, 2], [36, 2]];
-})();
+}
 
 // restricted = anywhere a customer has no business being
 export function restricted(x, y, z) {
-  if (x < -14 || x > 14 || z > 0 || z < -20) return false;
-  return z < -9.8 || y < -1 || y > 2;
+  return L.restricted ? L.restricted(x, y, z) : false;
 }
 export const inBank = (x, z) => x > -14 && x < 14 && z < 0 && z > -20;
 
 export function setDoor(id, open) { const d = L.doors[id]; if (d) d.box.off = !!open; }
-export function setVault(open) { L.vaultDoor.off = !!open; }
+export function setVault(open) { if (L.vaultDoor) L.vaultDoor.off = !!open; }
 
 // ------------------------------------------------------------------ ground, collision, rays
 export function groundAt(x, y, z) {
@@ -242,7 +248,8 @@ export const los = (ax, ay, az, bx, by, bz) => rayT(ax, ay, az, bx, by, bz, 'sig
 // ------------------------------------------------------------------ navigation grid
 const NS = .5, NX0 = -39, NZ0 = -24, NW = 157, NH = 95;
 const nav = { nodes: [], cell: new Map() };
-(function buildNav() {
+function buildNav() {
+  nav.nodes = []; nav.cell = new Map();
   for (let iz = 0; iz < NH; iz++) for (let ix = 0; ix < NW; ix++) {
     const x = NX0 + ix * NS, z = NZ0 + iz * NS, hs = [];
     for (const b of L.boxes) if (b.walk && x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) hs.push(b.y1);
@@ -274,7 +281,7 @@ const nav = { nodes: [], cell: new Map() };
       if (m >= 0 && at(n.ix + dx, n.iz, n.y) >= 0 && at(n.ix, n.iz + dz, n.y) >= 0) n.nb.push(m, NS * 1.414);
     }
   });
-})();
+}
 export function nearestNode(x, y, z) {
   const ix = Math.round((x - NX0) / NS), iz = Math.round((z - NZ0) / NS); let best = -1, bd = 1e9;
   for (let r = 0; r <= 4 && best < 0; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
@@ -323,3 +330,50 @@ export function findPath(ax, ay, az, bx, by, bz) {
   return out.map(n => ({ x: n.x, y: n.y, z: n.z }));
 }
 export const navStats = () => nav.nodes.length;
+
+// ------------------------------------------------------------------ job two: 47th St Fine Jewelers
+function jewel() {
+  street();
+  L.name = '47th St Fine Jewelers'; L.sign = '47th ST FINE JEWELERS'; L.floors = [['GROUND — showroom, stock room, office', 0]];
+  L.restricted = (x, y, z) => x > -14 && x < 14 && z < -8 && z > -14;
+  L.lootMark = [-12.6, 1.6, -11];
+  L.pins = [[0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 14, -11, 'ALLEY DOOR', '#fff'], [0, 16.1, -21, 'DUMPSTER', '#aaa'], [0, -13, -11, 'OFFICE SAFE', '#5fd38d'], [0, -10, -13.2, 'CAMERA CONSOLE', '#4dc3ff'], [0, 0, -4.5, '8 DISPLAY CASES', '#5fd38d']];
+  B(-14, 14, 0, 12, -26, -14.15, 'brick2', { skyline: true });
+  F(-14, 14, -8, 0, 0, 'marble'); F(-14, 14, -14, -8, 0, 'tile'); B(-14.3, 14.3, 4.5, 4.8, -14.3, .3, 'roof');
+  wallX(0, -14, 14, 0, 4.5, 'stone', [[-12, -2.6, 3.4, .8, 'glass'], [-1.3, 1.3, 2.5], [2.6, 12, 3.4, .8, 'glass']]);
+  wallX(-14, -14, 14, 0, 4.5, 'stone'); wallZ(-14, -14, 0, 0, 4.5, 'stone'); wallZ(14, -14, 0, 0, 4.5, 'stone', [[-11.6, -10.4]]);
+  door('side', 'z', 14, -11.6, -10.4, 0, { locked: true, name: 'Alley door' });
+  wallX(-8, -14, 14, 0, 4.5, 'plaster', [[2, 3.2]]); door('back', 'x', -8, 2, 3.2, 0, { locked: true, name: 'Stock room' });
+  wallZ(-6, -14, -8, 0, 4.5, 'plaster', [[-11.6, -10.4]]); door('office', 'z', -6, -11.6, -10.4, 0, { locked: true, name: "Owner's office" });
+  L.cases = [[-10, -3], [-6, -3], [6, -3], [10, -3], [-10, -6.4], [-5, -6.4], [6.5, -6.4], [10.5, -6.4]];
+  for (const [x, z] of L.cases) { B(x - .8, x + .8, 0, .9, z - .4, z + .4, 'counter', { opaque: false }); B(x - .78, x + .78, .9, 1.25, z - .38, z + .38, 'glass', { opaque: false, glass: true, solid: false }); }
+  B(-1.6, 1.6, 0, 1.05, -7.1, -6.5, 'counter', { opaque: false });
+  B(-13.7, -12.6, 0, 1.5, -11.6, -10.4, 'vaultdoor');                 // the office safe
+  B(-11, -9, 0, 1.1, -13.8, -13.2, 'console'); B(-9.5, -7.5, 0, .8, -9.6, -8.6, 'desk', { opaque: false });
+  B(4, 13, 0, 2.2, -13.85, -13.3, 'shelf'); B(-5.6, -5, 0, 2.2, -13.5, -12, 'shelf'); B(6, 9, 0, 1, -9, -8.3, 'cabinet', { opaque: false });
+  for (const x of [-8, 0, 8]) L.lights.push([x, 3.9, -4, 0xfff0d8, 1.2, 16]);
+  L.lights.push([4, 3.6, -11, 0xfff0d0, .8, 14], [-10, 3.6, -11, 0xffd0a0, .8, 10], [16.5, 4, -11, 0xff8844, .9, 12]);
+  L.cams.push({ id: 0, x: 13.4, y: 3.8, z: -.6, yaw: Math.atan2(-10, -5), pitch: -.4, sweep: .5, range: 16, name: 'Showroom', floor: 0 });
+  L.cams.push({ id: 1, x: 13.4, y: 3.4, z: -13.4, yaw: Math.atan2(-10, 2), pitch: -.35, sweep: .3, range: 15, name: 'Stock room', floor: 0 });
+  const P = (x, z, wait) => ({ x, y: 0, z, wait: wait || 0 });
+  L.guards.push({ name: 'Officer Ruiz', route: [P(-11.5, -1.6, 2), P(11.5, -1.6, 2), P(11.5, -4.8, 1), P(-11.5, -4.8, 1)] });
+  L.guards.push({ name: 'Officer Walsh', route: [P(10, -10.6, 6), P(-3, -10.6, 6)], card: 'a' });
+  const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
+  civ(-8, -2, Math.PI); civ(5.2, -2, Math.PI); civ(-5.5, -5.4, Math.PI); civ(9, -5.4, Math.PI); civ(0, -7.5, 0, { teller: true }); civ(-8.5, -10.4, Math.PI, { manager: true });
+  const I = (id, type, x, y, z, o) => L.inter.push(Object.assign({ id, type, x, y, z, r: 1.9 }, o || {}));
+  for (const k in L.doors) { const d = L.doors[k]; I('door:' + k, 'door', d.x, d.y + 1, d.z, { door: k, r: 1.7 }); }
+  L.cases.forEach(([x, z], i) => I('case' + i, 'case', x, 1, z, { value: 3200 + (i * 937) % 2600, r: 1.7 }));
+  I('till0', 'till', 0, 1, -7.4, { value: 1500, r: 1.5 });
+  I('safe', 'safe', -12.4, 1, -11, { r: 1.7 }); I('console', 'console', -10, 1, -12.9);
+  I('van', 'van', 4.3, 1, 6.2, { r: 2.6 }); I('stash0', 'stash', 16.1, 1, -21, { r: 2.2, name: 'dumpster' });
+  L.vaultBags = []; L.safeBags = [[-11.8, -9.6], [-11.8, -12.4], [-11, -11]];
+}
+
+export const JOB_IDS = ['bank', 'jewel'];
+export function buildLevel(job) {
+  for (const k of ['boxes', 'ramps', 'lights', 'props', 'cams', 'inter', 'guards', 'civs']) L[k] = [];
+  L.doors = {}; L.vaultDoor = null; L.crate = null; L.safeBags = null; L.cases = null;
+  (job === 'jewel' ? jewel : bank)(); L.job = job === 'jewel' ? 'jewel' : 'bank';
+  buildNav();
+}
+buildLevel('bank');

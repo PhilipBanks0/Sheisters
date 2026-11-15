@@ -81,6 +81,12 @@ export const CALLOUTS = [
 ];
 
 export const TASKS = { '': 'No assignment', chief: "Lift the chief's keycard", desk: "Get the manager's keycard", cams: 'Kill the cameras', crowd: 'Control the lobby', vault: 'Vault and drill', lookout: 'Lookout and pings', haul: 'Haul the loot' };
+export const JOBS = {
+  bank: { name: 'First Empire Savings', hood: 'Midtown', take: 'up to $190k',
+    brief: 'Five guards, four cameras, a lobby full of witnesses. The vault is in the basement behind two card readers that have to be turned <b>at the same time</b>. Chief Mahoney wears one keycard in the security room; the manager keeps the other in his desk upstairs. No cards? Bring the drill and bring patience. Drop a guard and somebody has to answer his radio.' },
+  jewel: { name: '47th St Fine Jewelers', hood: 'Diamond District', take: 'up to $95k',
+    brief: 'A smaller score to learn the ropes. Two guards, two cameras, a showroom of customers. Eight display cases: smash them and the whole block hears it, or let a <b>Safecracker</b> cut the glass quietly. The real money is the safe in the owner\'s office behind the stock room. Officer Walsh carries the keycard for the back doors.' },
+};
 export const xpFor = lvl => 60 + lvl * 45;
 
 const KEY = 'sheisters-save-v2';
