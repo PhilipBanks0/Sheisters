@@ -7,13 +7,11 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="stage">
-  <canvas id="gl" width="1280" height="720"></canvas>
-  <canvas id="game" width="1280" height="720"></canvas>
-  <div id="ui"></div>
-</div>
+<canvas id="gl"></canvas>
+<canvas id="hud2d"></canvas>
+<div id="hud"></div>
+<div id="ui"></div>
 <script src="vendor/three.min.js"></script>
-<script src="view3d.js"></script>
-<script src="game.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

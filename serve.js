@@ -1,13 +1,17 @@
-// SHEISTERS server: serves the game and relays online play between one host and up to 3 guests.
+// SHEISTERS server: serves the game and relays online play inside crews (rooms).
+// Each crew has a 4-letter code, one host (who runs the heist simulation) and up to 3 guests.
 // Run `node serve.js`, then open the address it prints. No dependencies.
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const PORT = +process.env.PORT || 5173;
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.glb': 'model/gltf-binary', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.ico': 'image/x-icon' };
 
 const server = http.createServer((req, res) => {
-  const name = path.normalize(decodeURIComponent(req.url.split('?')[0])).replace(/^([\\/])+/, '') || 'index.html';
+  let name;
+  try { name = path.normalize(decodeURIComponent(req.url.split('?')[0])).replace(/^([\\/])+/, '') || 'index.html'; }
+  catch (e) { res.writeHead(400); return res.end(); }
   const file = path.join(__dirname, name);
-  if (!file.startsWith(__dirname) || name.startsWith('.')) { res.writeHead(403); return res.end(); }
+  if (!file.startsWith(__dirname) || name.split(/[\\/]/).some(p => p.startsWith('.')) || name.startsWith('deploy') || name === 'serve.js') { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -27,43 +31,55 @@ function frame(str) {
 }
 const send = (sock, obj) => { if (sock && !sock.destroyed) sock.write(frame(typeof obj === 'string' ? obj : JSON.stringify(obj))); };
 
-// ---- one crew per server ----
-let host = null, nextId = 1;
-const guests = new Map();          // id -> socket
+// ---- crews ----
+const rooms = new Map();           // code -> { host, guests: Map(id -> socket) }
+const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+function newCode() {
+  for (;;) {
+    let c = ''; for (let i = 0; i < 4; i++) c += LETTERS[crypto.randomInt(LETTERS.length)];
+    if (!rooms.has(c)) return c;
+  }
+}
 
 function onMessage(sock, text) {
   let m; try { m = JSON.parse(text); } catch (e) { return; }
-  if (m.t === 'ping') return;
+  if (!m || m.t === 'ping') return;
   if (!sock.role) {
     if (m.t === 'host') {
-      if (host) return send(sock, { t: 'err', msg: 'Someone is already hosting on this server — use Join.' });
-      sock.role = 'host'; host = sock;
-      send(sock, { t: 'role', role: 'host', id: 0, addrs: lanAddrs() });
+      if (rooms.size >= 200) return send(sock, { t: 'err', msg: 'Server is full. Try again in a bit.' });
+      const code = newCode();
+      sock.role = 'host'; sock.code = code;
+      rooms.set(code, { host: sock, guests: new Map() });
+      send(sock, { t: 'role', role: 'host', id: 0, code, addrs: lanAddrs() });
     } else if (m.t === 'join') {
-      if (!host) return send(sock, { t: 'err', msg: 'Nobody is hosting on this server yet.' });
-      sock.role = 'guest'; sock.id = nextId++; guests.set(sock.id, sock);
-      send(sock, { t: 'role', role: 'guest', id: sock.id });
-      send(host, { t: 'peer', id: sock.id, on: true });
+      const code = String(m.code || '').toUpperCase().trim(), room = rooms.get(code);
+      if (!room) return send(sock, { t: 'err', msg: 'No crew with code ' + (code || '????') + '.' });
+      let id = 1; while (room.guests.has(id)) id++;
+      if (id > 3) return send(sock, { t: 'err', msg: 'That crew is full.' });
+      sock.role = 'guest'; sock.code = code; sock.id = id; room.guests.set(id, sock);
+      send(sock, { t: 'role', role: 'guest', id, code });
+      send(room.host, { t: 'peer', id, on: true });
     }
     return;
   }
-  if (sock.role === 'guest') { m.from = sock.id; send(host, m); return; }
+  const room = rooms.get(sock.code); if (!room) return;
+  if (sock.role === 'guest') { m.from = sock.id; send(room.host, m); return; }
   // host -> one guest or everyone
-  if (m.to !== undefined) return send(guests.get(m.to), text);
+  if (m.to !== undefined) return send(room.guests.get(m.to), text);
   const out = frame(text);
-  for (const g of guests.values()) {
+  for (const g of room.guests.values()) {
     if (g.destroyed || (m.t === 'snap' && g.writableLength > 400000)) continue;   // drop snapshots for a lagging guest
     g.write(out);
   }
 }
 function onClose(sock) {
   if (sock.gone) return; sock.gone = true;
-  if (sock.role === 'host' && host === sock) {
-    host = null;
-    for (const g of guests.values()) { send(g, { t: 'bye' }); g.end(); }
-    guests.clear();
-  } else if (sock.role === 'guest') {
-    guests.delete(sock.id); send(host, { t: 'peer', id: sock.id, on: false });
+  const room = rooms.get(sock.code); if (!room) return;
+  if (sock.role === 'host' && room.host === sock) {
+    for (const g of room.guests.values()) { send(g, { t: 'bye' }); g.end(); }
+    rooms.delete(sock.code);
+  } else if (sock.role === 'guest' && room.guests.get(sock.id) === sock) {
+    room.guests.delete(sock.id); send(room.host, { t: 'peer', id: sock.id, on: false });
   }
 }
 
