@@ -53,7 +53,7 @@ function street() {
 
 function bank() {
   street();
-  L.name = 'First Empire Savings'; L.sign = 'FIRST EMPIRE SAVINGS'; L.floors = [['UPSTAIRS — offices', 3.5], ['GROUND — lobby, tellers, staff hall', 0], ['BASEMENT — vault', -4]];
+  L.name = 'First Empire Savings'; L.sign = 'FIRST EMPIRE SAVINGS'; L.signY = 5.4; L.floors = [['UPSTAIRS — offices', 3.5], ['GROUND — lobby, tellers, staff hall', 0], ['BASEMENT — vault', -4]];
   L.restricted = (x, y, z) => !(x < -14 || x > 14 || z > 0 || z < -20) && (z < -9.8 || y < -1 || y > 2);
   L.lootMark = [-9.5, -2.5, -16.5];
   L.pins = [[0, -12.5, -18.6, 'CAMERA CONSOLE', '#4dc3ff'], [0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 14, -16, 'ALLEY DOOR', '#fff'], [0, 16.1, -21, 'DUMPSTER', '#aaa'], [0, -12.4, -19.2, 'LOCKER', '#aaa'], [0, 0, -19, 'STAIRS DOWN', '#fff'], [0, 9, -19, 'STAIRS UP', '#fff'],
@@ -334,7 +334,7 @@ export const navStats = () => nav.nodes.length;
 // ------------------------------------------------------------------ job two: 47th St Fine Jewelers
 function jewel() {
   street();
-  L.name = '47th St Fine Jewelers'; L.sign = '47th ST FINE JEWELERS'; L.floors = [['GROUND — showroom, stock room, office', 0]];
+  L.name = '47th St Fine Jewelers'; L.sign = '47th ST FINE JEWELERS'; L.signY = 3.95; L.floors = [['GROUND — showroom, stock room, office', 0]];
   L.restricted = (x, y, z) => x > -14 && x < 14 && z < -8 && z > -14;
   L.lootMark = [-12.6, 1.6, -11];
   L.pins = [[0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 14, -11, 'ALLEY DOOR', '#fff'], [0, 16.1, -21, 'DUMPSTER', '#aaa'], [0, -13, -11, 'OFFICE SAFE', '#5fd38d'], [0, -10, -13.2, 'CAMERA CONSOLE', '#4dc3ff'], [0, 0, -4.5, '8 DISPLAY CASES', '#5fd38d']];
@@ -369,11 +369,38 @@ function jewel() {
   L.vaultBags = []; L.safeBags = [[-11.8, -9.6], [-11.8, -12.4], [-11, -11]];
 }
 
-export const JOB_IDS = ['bank', 'jewel'];
+// ------------------------------------------------------------------ job three: the corner bodega
+function bodega() {
+  street();
+  L.name = 'Corner Bodega'; L.sign = '24HR DELI · GROCERY · ATM'; L.signY = 3.15; L.floors = [['GROUND — shop and storage', 0]];
+  L.restricted = (x, y, z) => x > -6 && x < 6 && z < -7 && z > -11;
+  L.lootMark = [4.6, 1.6, -10];
+  L.pins = [[0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 4.2, -10.1, 'FLOOR SAFE', '#5fd38d'], [0, -5.2, -.8, 'ATM', '#5fd38d'], [0, 4.6, -3.9, 'REGISTER', '#5fd38d']];
+  B(-14, -6.15, 0, 10, -26, 0, 'brick', { skyline: true }); B(6.15, 14, 0, 11, -26, 0, 'brick3', { skyline: true }); B(-6.15, 6.15, 0, 10, -26, -11.15, 'brick2', { skyline: true });
+  F(-6, 6, -11, 0, 0, 'tile'); B(-6.3, 6.3, 3.6, 3.9, -11.3, .3, 'roof');
+  wallX(0, -6, 6, 0, 3.6, 'brick', [[-5, -1.6, 2.8, .9, 'glass'], [-1, 1, 2.4], [1.8, 5, 2.8, .9, 'glass']]);
+  wallX(-11, -6, 6, 0, 3.6, 'plaster'); wallZ(-6, -11, 0, 0, 3.6, 'plaster'); wallZ(6, -11, 0, 0, 3.6, 'plaster');
+  wallX(-7, -6, 6, 0, 3.6, 'plaster', [[-4.6, -3.4]]); door('back', 'x', -7, -4.6, -3.4, 0, { locked: true, name: 'Storage' });
+  B(-3.6, -3, 0, 1.7, -5.6, -1.6, 'shelf'); B(-1.2, -.6, 0, 1.7, -5.6, -1.6, 'shelf'); B(-5.85, -5.35, 0, 2.1, -6.6, -1.6, 'cabinet');
+  B(2.2, 5.85, 0, 1.05, -3.4, -2.8, 'counter', { opaque: false }); B(-5.85, -5.3, 0, 1.6, -1.2, -.5, 'console');
+  B(4.6, 5.7, 0, 1, -10.7, -9.6, 'vaultdoor'); B(-5.6, -2, 0, 1.4, -10.75, -9.9, 'pallet');
+  L.lights.push([0, 3.2, -3.5, 0xe8f0ff, 1.3, 12], [0, 3.2, -9, 0xffe0b0, .8, 8]);
+  L.cams.push({ id: 0, x: 5.6, y: 3.2, z: -.5, yaw: Math.atan2(-6, -5), pitch: -.45, sweep: .4, range: 11, name: 'Shop', floor: 0 });
+  L.guards.push({ name: 'Mr. Park', route: [{ x: 4, y: 0, z: -4.4, wait: 99 }], face: 0, card: 'a' });
+  const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
+  civ(-2.1, -3.5, 0); civ(.8, -2.2, Math.PI); civ(-4.5, -4.8, -Math.PI / 2); civ(2.8, -4.6, 0, { teller: true });
+  const I = (id, type, x, y, z, o) => L.inter.push(Object.assign({ id, type, x, y, z, r: 1.9 }, o || {}));
+  for (const k in L.doors) { const d = L.doors[k]; I('door:' + k, 'door', d.x, d.y + 1, d.z, { door: k, r: 1.7 }); }
+  I('till0', 'till', 4.9, 1, -3.9, { value: 900, r: 1.5 }); I('atm', 'depbox', -4.9, 1, -.85, { value: 3500, r: 1.5, label: 'Crack the ATM' });
+  I('safe', 'safe', 4.1, 1, -10.1, { r: 1.7 }); I('van', 'van', 4.3, 1, 6.2, { r: 2.6 }); I('stash0', 'stash', 16.1, 1, -21, { r: 2.2, name: 'dumpster' });
+  L.vaultBags = []; L.safeBags = [[3.2, -9.3], [3, -10.3]];
+}
+
+export const JOB_IDS = ['bank', 'jewel', 'bodega'];
 export function buildLevel(job) {
   for (const k of ['boxes', 'ramps', 'lights', 'props', 'cams', 'inter', 'guards', 'civs']) L[k] = [];
   L.doors = {}; L.vaultDoor = null; L.crate = null; L.safeBags = null; L.cases = null;
-  (job === 'jewel' ? jewel : bank)(); L.job = job === 'jewel' ? 'jewel' : 'bank';
+  const def = { jewel, bodega }[job] || bank; L.signY = 0; def(); L.job = def === bank ? 'bank' : job;
   buildNav();
 }
 buildLevel('bank');

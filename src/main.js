@@ -1,5 +1,5 @@
 // SHEISTERS — client: menus, controls, networking, HUD, main loop.
-import { L, groundAt, moveCircle, rayT, buildLevel } from './level.js';
+import { L, groundAt, moveCircle, rayT, buildLevel, restricted } from './level.js';
 import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, JOBS, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
 import { createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
@@ -102,7 +102,7 @@ function hostStart() {
 }
 function setJob(job) { buildLevel(job); buildScene(); }
 function beginHeist(S) {
-  G.S = S; G.phase = 'heist'; G.feed = []; G.bubbles = []; G.rewarded = false; G.overT = 0; me.local = null; me.reload = 0; me.cd = 0; G.masked = false;
+  G.S = S; G.phase = 'heist'; G.feed = []; G.bubbles = []; G.tipQ = []; G.tipNow = null; G.rewarded = false; G.overT = 0; me.local = null; me.reload = 0; me.cd = 0; G.masked = false;
   buildScene(); ui.innerHTML = ''; ui.className = ''; hud.style.display = hc.style.display = 'block'; music('stealth');
   say('Case the joint. Nobody notices you until the mask goes on — [G].', '');
 }
@@ -192,6 +192,28 @@ function control(dt) {
   else if (alive) { p.x = l.x; p.y = l.y; p.z = l.z; p.yaw = l.yaw; p.pitch = l.pitch; p.cr = l.cr; p.mv = l.mv; p.it = l.it; } else p.it = null;
 }
 function hint(s) { G.hint = s; G.hintT = 1.6; }
+// first-time lessons: each shows once per save, one at a time
+const TIPS = {
+  case: ['CASING', 'You look like a customer. Walk in and find the guards and cameras. Aim at one and press Z to mark it for the crew. Nothing is illegal until you press G.'],
+  tresp: ['STAFF ONLY', 'Back rooms are off limits. Guards and cameras notice you here even without a mask.'],
+  mask: ['MASK ON', 'Now everyone reacts to you. Crouch (C) to be harder to notice. F shouts civilians to the floor, but someone has to keep an eye on them.'],
+  spot: ['BEING WATCHED', 'The bar over a guard fills while he can see you. Break his line of sight, or get behind him and hold E.'],
+  radio: ['HIS RADIO', 'A dropped guard gets a radio call. Hold E on him to answer within 12 seconds. Dispatch only buys four excuses per job.'],
+  body: ['BODIES', 'Other guards raise the alarm if they find him. Pick him up with E and stash him where the STASH marker points.'],
+  bag: ['THE LOOT', 'Bags slow you down. Carry it to the van and hold E to throw it in. G drops it.'],
+  loud: ['IT IS LOUD', 'Police arrive in waves and get heavier. T orders AI partners to follow you. Load what you can, get the whole crew to the van, and hold E there to drive.'],
+  down: ['YOU ARE DOWN', 'A partner has to reach you and hold E before the timer runs out.'],
+};
+function tip(id) { const t = G.save.tips || (G.save.tips = {}); if (t[id] || G.tipQ.includes(id)) return; G.tipQ.push(id); }
+function tipsTick(dt, S, p, l) {
+  if (!p.mk) tip('case'); else tip('mask');
+  if (!p.mk && restricted(l.x, l.y, l.z)) tip('tresp');
+  if (!S.loud && S.npc.some(n => n.k === 'guard' && n.det > .3 && n.st !== 'ko' && n.st !== 'dead')) tip('spot');
+  if (!S.loud && S.npc.some(n => n.radio > 0)) tip('radio'); else if (!S.loud && S.npc.some(n => n.st === 'ko' && !n.hid && !(n.radio > 0))) tip('body');
+  if (p.bags) tip('bag'); if (S.loud) tip('loud'); if (p.dn === 1) tip('down');
+  if (G.tipNow) { G.tipT -= dt; if (G.tipT <= 0) G.tipNow = null; }
+  else if (G.tipQ.length) { G.tipNow = G.tipQ.shift(); G.tipT = 9; G.save.tips[G.tipNow] = 1; saveSave(G.save); sfx('ping', .5); }
+}
 
 // ------------------------------------------------------------------ HUD
 function drawHud(dt) {
@@ -231,6 +253,7 @@ function drawHud(dt) {
   // ---- DOM panels (refreshed ~8 times a second)
   G.hudT = (G.hudT || 0) - dt; G.hintT -= dt; if (G.hudT > 0 && !G.best !== !G.lastBest) G.hudT = 0; if (G.hudT > 0) return; G.hudT = .12; G.lastBest = G.best;
   const cls = CLASSES[p.cls], gun = cls.gun;
+  tipsTick(.12, S, p, l);
   let det = 0; for (const n of S.npc) if (n.k === 'guard' && !isBody(n)) det = Math.max(det, n.det); for (const c of S.cams) det = Math.max(det, c.d);
   let banner, bc = '';
   if (S.over) { banner = S.over.ok ? 'GETAWAY' : 'BUSTED'; bc = S.over.ok ? 'good' : 'bad'; }
@@ -255,6 +278,7 @@ function drawHud(dt) {
     ${prompt}
     ${keys.Tab || keys.KeyX ? `<div class="calls"><h4>CALLOUTS</h4>${CALLOUTS.map((c, i) => `<div><b>${i + 1}</b> ${c[0]}</div>`).join('')}<div><b>Z</b> / middle-click — ping</div><div><b>F</b> — shout the room down</div></div>` : `<div class="keys">${G.usePad ? 'Stick move · L3 run · Ⓑ crouch · Ⓐ use · Ⓨ mask / drop · LB ability · RB ping · R3 shout · Ⓧ reload · RT fire · LT aim · D-pad callouts · Back crew follow' : 'WASD move · Shift run · C crouch · E use · G mask / drop · Q ability · F shout · Z ping · T crew follow / hold · 1–6 callouts · hold Tab for list'}</div>`}
     ${p.dn === 1 ? `<div class="down">YOU'RE DOWN<small>A partner has ${Math.ceil(p.dnT)}s to get you up</small></div>` : p.dn === 2 ? '<div class="down">IN CUFFS<small>Watch the rest of the crew finish it</small></div>' : ''}
+    ${G.tipNow ? `<div class="tip"><h4>${TIPS[G.tipNow][0]}</h4>${esc(TIPS[G.tipNow][1])}</div>` : ''}
     ${!IN.locked && !S.over ? '<div class="click">Click to take control</div>' : ''}`;
 }
 

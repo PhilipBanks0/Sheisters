@@ -77,17 +77,24 @@ export function decorateJewel(sc, h) {
   const add = (geo, mat, x, y, z, o) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); if (o && o.rx) m.rotation.x = o.rx; if (o && o.ry) m.rotation.y = o.ry; sc.add(m); return m; };
   const gems = [0x8af0ff, 0xff5a7a, 0x7aff9a, 0xffe07a, 0xd0a0ff], cases = [];
   // every display case gets a tray of stones that vanishes when the case is emptied
-  L.cases.forEach(([x, z], i) => {
+  (L.cases || []).forEach(([x, z], i) => {
     const g = new T.Group(); sc.add(g); cases.push(g);
     const tray = new T.Mesh(new T.BoxGeometry(1.4, .04, .6), std(0x1a1030, { roughness: 1 })); tray.position.set(x, .93, z); g.add(tray);
     for (let k = 0; k < 9; k++) { const c = gems[(i + k) % gems.length], m = new T.Mesh(new T.OctahedronGeometry(.05 + (k % 3) * .012), std(c, { roughness: .05, metalness: .4, emissive: c, emissiveIntensity: .55 })); m.position.set(x - .56 + k * .14, 1.0, z + ((k % 2) - .5) * .22); g.add(m); }
     const s = h.glow(new T.Vector3(x, 1.15, z), 0xcfe8ff, 1.5); s.material.opacity = .28; sc.remove(s); g.add(s);
   });
   const plate = (txt, x, y, z, w, ry) => add(new T.PlaneGeometry(w, .42), h.label(txt, 512, 64, 'bold 40px Georgia', '#e8c870', '#000000'), x, y, z, { ry });
-  plate('DIAMONDS · GOLD · WATCHES', 0, 3.3, -7.82, 6); plate('PRIVATE', 2.6, 2.5, -7.82, 1.4); plate('OFFICE', -5.82, 2.5, -11, 1.4, Math.PI / 2);
-  add(new T.PlaneGeometry(3, 7.4), std(0x1a2a4a, { roughness: 1 }), 0, .012, -3.9, { rx: -Math.PI / 2 });
-  add(new T.TorusGeometry(.32, .05, 8, 20), std(0xc9a03a, { roughness: .25, metalness: .9 }), -12.55, .8, -11, { ry: Math.PI / 2 });
-  add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), 0, 1.2, -6.8);
+  if (L.job === 'jewel') {
+    plate('DIAMONDS · GOLD · WATCHES', 0, 3.3, -7.82, 6); plate('PRIVATE', 2.6, 2.5, -7.82, 1.4); plate('OFFICE', -5.82, 2.5, -11, 1.4, Math.PI / 2);
+    add(new T.PlaneGeometry(3, 7.4), std(0x1a2a4a, { roughness: 1 }), 0, .012, -3.9, { rx: -Math.PI / 2 });
+    add(new T.TorusGeometry(.32, .05, 8, 20), std(0xc9a03a, { roughness: .25, metalness: .9 }), -12.55, .8, -11, { ry: Math.PI / 2 });
+    add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), 0, 1.2, -6.8);
+  } else {
+    plate('EMPLOYEES ONLY', -4, 2.5, -6.82, 1.9); add(new T.BoxGeometry(.5, .3, .4), std(0x2a2c30, { metalness: .5 }), 4.9, 1.2, -3.1);
+    const cols = [0xd04030, 0xe8c040, 0x4080d0, 0x50a060, 0xe08030];
+    for (const sx of [-3.3, -.9]) for (let k = 0; k < 30; k++) add(new T.BoxGeometry(.2, .26, .2), std(cols[k % 5], { roughness: .7 }), sx + ((k % 2) ? .33 : -.33), .5 + Math.floor(k / 10) * .5, -5.3 + (k % 10) * .4);
+    h.glow(new T.Vector3(-5.25, 1.4, -.85), 0x40ff80, 1.2);
+  }
   const stripe = h.canvasTex(128, 32, (g) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#e8e0c8' : '#3a1f5a'; g.fillRect(i * 16, 0, 16, 32); } });
   add(new T.BoxGeometry(5, .12, 1.9), new T.MeshLambertMaterial({ map: stripe }), 0, 2.95, 1.0, { rx: .16 });
   const puddle = std(0x05070c, { roughness: .03, metalness: .9, transparent: true, opacity: .75 });

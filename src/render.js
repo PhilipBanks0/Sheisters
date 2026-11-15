@@ -117,7 +117,7 @@ export function buildScene() {
     const p = new T.PointLight(0xffa850, 1.15, 20, 1.6); p.position.set(s[0], 5.8, s[1] + (s[1] < 8 ? .8 : -.8)); sc.add(p);
     const b = new T.Mesh(new T.SphereGeometry(.22, 8, 6), new T.MeshBasicMaterial({ color: 0xffc070 })); b.position.copy(p.position); sc.add(b); glow(p.position, 0xffa040, 3.5); }
   // signs
-  const sign = new T.Mesh(new T.PlaneGeometry(13, 1.6), label(L.sign, 1024, 128, 'bold 76px Georgia', '#ffe6a8', '#ffb030')); sign.position.set(0, L.job === 'bank' ? 5.4 : 3.95, .22); sc.add(sign);
+  const sign = new T.Mesh(new T.PlaneGeometry(13, 1.6), label(L.sign, 1024, 128, 'bold 76px Georgia', '#ffe6a8', '#ffb030')); sign.position.set(0, L.signY, .22); if (L.job === 'bodega') sign.scale.set(.88, .7, 1); sc.add(sign);
   const neon = (txt, x, y, z, ry, col, glowc, w) => { const m = new T.Mesh(new T.PlaneGeometry(w, 1.3), label(txt, 512, 128, 'bold 84px Arial', col, glowc)); m.position.set(x, y, z); m.rotation.y = ry; sc.add(m); if (w > 4.2) { const p = new T.PointLight(new T.Color(glowc), 1.3, 13, 1.6); p.position.set(x, y, z + (ry ? -1 : 1)); sc.add(p); } };
   neon('LIQUOR', -12, 4.2, 17.9, Math.PI, '#ffd0e0', '#ff2a6a', 5); neon('DINER', 8, 4.4, 17.9, Math.PI, '#d0f4ff', '#28c8ff', 4.6); neon('PAWN', 27, 4, 17.9, Math.PI, '#e8ffd0', '#58ff58', 4);
   // road paint, van detail, vault gold shimmer
@@ -135,7 +135,7 @@ export function buildScene() {
   R.cops = new T.Group(); R.cops.visible = false; sc.add(R.cops); R.copLights = [];
   for (const [x, z, ry] of [[-15, 9.5, .5], [15, 10.5, -.6]]) { const car = new T.Group(), body = new T.Mesh(new T.BoxGeometry(4.4, 1.0, 1.9), new T.MeshStandardMaterial({ color: 0x1a2e5a, roughness: .3, metalness: .5 })), top = new T.Mesh(new T.BoxGeometry(2.2, .6, 1.7), new T.MeshStandardMaterial({ color: 0xe8e8e8, roughness: .3 }));
     body.position.y = .75; top.position.y = 1.5; const red = new T.PointLight(0xff2020, 0, 26, 1.4), blue = new T.PointLight(0x2040ff, 0, 26, 1.4); red.position.set(.5, 2.1, 0); blue.position.set(-.5, 2.1, 0);
-    car.add(body, top, red, blue); car.position.set(x, 0, z); car.rotation.y = ry; R.cops.add(car); R.copLights.push([red, blue]); }
+    car.add(body, top, red, blue); car.position.set(x, 0, z); car.rotation.y = ry; car.userData.x = x; R.cops.add(car); R.copLights.push([red, blue]); }
   R.bagGeo = new T.BoxGeometry(.62, .34, .38); R.bagMat = new T.MeshStandardMaterial({ color: 0x2a2f24, roughness: .9 }); R.bags = new Map();
   R.crate = new T.Mesh(new T.BoxGeometry(1.5, .55, .8), new T.MeshStandardMaterial({ color: 0xd8a830, roughness: .3, metalness: .9, emissive: 0x3a2400, emissiveIntensity: .5 })); R.crate.castShadow = true; sc.add(R.crate);
   R.tracerMat = new T.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: .9 });
@@ -256,7 +256,8 @@ export function renderFrame(S, me, dt, camState) {
   R.crate.visible = S.crate.st === 0; R.crate.position.set(S.crate.x, S.crate.y + (S.crate.h.length === 2 ? .85 : .28), S.crate.z);
   if (S.crate.h.length === 2) { const a = S.pl.find(p => p.id === S.crate.h[0]), b = S.pl.find(p => p.id === S.crate.h[1]); if (a && b) R.crate.rotation.y = Math.atan2(a.z - b.z, b.x - a.x); }
   // police lights, rain, fx
-  R.cops.visible = S.loud && S.wave > 0;
+  R.cops.visible = S.loud && S.wave > 0; R.copT = R.cops.visible ? (R.copT || 0) + dt : 0;
+  if (R.cops.visible) { const u = Math.min(1, R.copT / 2.2), e = 1 - (1 - u) * (1 - u) * (1 - u); R.cops.children.forEach(c => { c.position.x = c.userData.x + Math.sign(c.userData.x) * (1 - e) * 42; }); }
   if (R.cops.visible) R.copLights.forEach((l, i) => { const f = Math.sin(R.t * 9 + i * 2) > 0; l[0].intensity = f ? 3.5 : 0; l[1].intensity = f ? 0 : 3.5; });
   R.rain.position.set(camState.x, 0, camState.z); const rp = R.rain.geometry.attributes.position.array;
   for (let i = 1; i < rp.length; i += 6) { rp[i] -= dt * 26; rp[i + 3] -= dt * 26; if (rp[i] < 0) { rp[i] += 22; rp[i + 3] += 22; } } R.rain.geometry.attributes.position.needsUpdate = true;

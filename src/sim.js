@@ -14,7 +14,7 @@ export function createState(seats, favor) {
   const S = { t: 0, loud: false, why: '', alarmT: -1, alarmWhy: '', wave: 0, waveT: 0, take: 0, civKills: 0, cards: { a: -1, b: -1 }, doors: {}, cams: [], camsOff: false, jamT: 0,
     vault: { open: false, drill: 0, prog: 0, need: 75, r: [-9, -9], rp: 0 }, bags: [], pl: [], npc: [], prog: {}, used: {}, marks: {}, pings: [], ev: [], favor, over: null, order: -1, radios: 0 };
   for (const k in L.doors) S.doors[k] = { o: 0, l: L.doors[k].locked ? 1 : 0, n: 0 };
-  if (favor === 'key') S.doors.side.l = 0;
+  if (favor === 'key' && S.doors.side) S.doors.side.l = 0;
   L.cams.forEach(c => S.cams.push({ d: 0, a: c.yaw }));
   seats.forEach((s, i) => {
     const sp = s.bot ? [[2.6, 4.6], [3.2, 8.2], [1.4, 6.6]][i % 3] : L.spawns[i % 4];
@@ -88,13 +88,13 @@ export function interInfo(S, it, p) {
     case 'till': case 'depbox': {
       if (S.used[it.id]) return null;
       let t = it.type === 'till' ? 3 : 5; if (c === 'safecracker') t /= has(p, 'skeleton') ? 3 : 1.5;
-      const lab = it.type === 'till' ? 'Empty the teller drawer' : 'Crack the deposit box';
+      const lab = it.label || (it.type === 'till' ? 'Empty the register' : 'Crack the deposit box');
       return mask(lab) || { label: lab, time: t };
     }
     case 'case': if (S.used[it.id]) return null;
       return mask('Open the display case') || (c === 'safecracker' ? { label: 'Cut the glass — quiet', time: has(p, 'skeleton') ? 1.5 : 3.5 } : { label: 'Smash the case — LOUD', time: 1, smash: true });
     case 'safe': if (S.used.safe) return null;
-      return mask('Crack the office safe') || { label: 'Crack the office safe', time: c === 'safecracker' ? (has(p, 'skeleton') ? 4 : 8) : 20 };
+      return mask('Crack the safe') || { label: 'Crack the safe', time: c === 'safecracker' ? (has(p, 'skeleton') ? 4 : 8) : 20 };
     case 'van':
       if (p.bags > 0) return { label: 'Throw the bag in the van', time: .25 };
       if (!crewAtVan(S)) return { label: 'Leave — waiting on the crew', no: true };
@@ -134,13 +134,14 @@ export function bestInter(S, p, list) {
 export function objectives(S) {
   const o = [];
   if (S.over) return o;
-  if (S.job === 'jewel') {
+  if (S.job !== 'bank') {
     const cases = L.inter.filter(i => i.type === 'case'), done = cases.filter(i => S.used[i.id]).length, bags = S.bags.filter(b => b.st !== 3), sec = bags.filter(b => b.st === 2).length;
     if (!S.loud && S.npc.some(n => n.radio > 0)) o.push('ANSWER THE RADIO on the guard you dropped! (' + S.radios + '/4 used)');
-    o.push('Clean out the display cases (' + done + '/' + cases.length + ') — smashing is loud, a Safecracker cuts quietly');
-    o.push(S.used.safe ? 'Haul the stones to the van (' + sec + '/' + bags.length + ')' : "Crack the safe in the owner's office");
-    if (!S.cards.a || S.cards.a < 0) o.push('· Officer Walsh carries a keycard for the back doors');
-    if (!S.camsOff && !S.loud) o.push('Optional: kill the cameras from the office');
+    if (cases.length) o.push('Clean out the display cases (' + done + '/' + cases.length + ') — smashing is loud, a Safecracker cuts quietly');
+    else o.push('Hit the register and the ATM');
+    o.push(S.used.safe ? 'Haul the bags to the van (' + sec + '/' + bags.length + ')' : S.job === 'jewel' ? "Crack the safe in the owner's office" : 'Crack the floor safe in the storage room');
+    const kg = L.guards.find(g => g.card); if (S.cards.a < 0 && kg) o.push('· ' + kg.name + ' carries the key for the back door');
+    if (!S.camsOff && !S.loud && L.inter.some(i => i.type === 'console')) o.push('Optional: kill the cameras from the office');
     o.push('Get the whole crew to the van and drive');
     return o;
   }
