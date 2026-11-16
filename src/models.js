@@ -20,12 +20,18 @@ export async function fitted(name, w, h, d, ry, stretch) {
   const wrap = new T.Group(); wrap.add(g); return wrap;
 }
 
-// rigged, animated people (Kenney Mini Characters, CC0)
+// rigged, animated people (Quaternius Ultimate Modular Men / Women, CC0). One file per rig carries the animations.
+import { MeshoptDecoder } from '../vendor/jsm/meshopt_decoder.module.js';
+loader.setMeshoptDecoder(MeshoptDecoder);
 const people = new Map();
-export function getPerson(name) {
-  if (!people.has(name)) people.set(name, new Promise(res => loader.load('assets/people/' + name + '.glb', g => {
+function loadPerson(name) {
+  if (!people.has(name)) people.set(name, new Promise(res => loader.load('assets/crew/' + name + '.glb', g => {
     g.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-    g.h = new T.Box3().setFromObject(g.scene).getSize(new T.Vector3()).y || .7; res(g);
+    g.scene.updateMatrixWorld(true); g.h = new T.Box3().setFromObject(g.scene).getSize(new T.Vector3()).y || 1.86; res(g);
   }, undefined, () => res(null))));
   return people.get(name);
+}
+export async function getPerson(name) {
+  const [g, rig] = await Promise.all([loadPerson(name), loadPerson(name[0] + '-suit')]);
+  return g && rig ? { scene: g.scene, h: g.h, animations: rig.animations } : null;
 }

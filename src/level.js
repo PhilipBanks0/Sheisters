@@ -63,7 +63,7 @@ function bank() {
   L.name = 'First Empire Savings'; L.sign = 'FIRST EMPIRE SAVINGS'; L.signY = 5.4; L.floors = [['UPSTAIRS — offices', 3.5], ['GROUND — lobby, tellers, staff hall', 0], ['BASEMENT — vault', -4]];
   L.restricted = (x, y, z) => !(x < -14 || x > 14 || z > 0 || z < -20) && (z < -9.8 || y < -1 || y > 2);
   L.lootMark = [-9.5, -2.5, -16.5];
-  L.pins = [[0, -12.5, -18.6, 'CAMERA CONSOLE', '#4dc3ff'], [0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 14, -16, 'ALLEY DOOR', '#fff'], [0, 16.1, -21, 'DUMPSTER', '#aaa'], [0, -12.4, -19.2, 'LOCKER', '#aaa'], [0, 0, -19, 'STAIRS DOWN', '#fff'], [0, 9, -19, 'STAIRS UP', '#fff'],
+  L.pins = [[0, -12.5, -18.6, 'CAMERA CONSOLE', '#4dc3ff'], [0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, 0, 0, 'FRONT DOOR', '#fff'], [0, 14, -16, 'ALLEY DOOR', '#fff'], [0, 17.6, -14.2, 'FIRE ESCAPE UP', '#fff'], [3.5, 14, -14.2, 'FIRE DOOR', '#f5c518'], [0, 16.1, -21, 'DUMPSTER', '#aaa'], [0, -12.4, -19.2, 'LOCKER', '#aaa'], [0, 0, -19, 'STAIRS DOWN', '#fff'], [0, 9, -19, 'STAIRS UP', '#fff'],
     [3.5, -9, -16.5, "MANAGER'S DESK + KEYCARD", '#f5c518'], [-4, -5, -17.2, 'READER', '#f5c518'], [-4, -5, -13.9, 'READER', '#f5c518'], [-4, -9.5, -16.4, 'VAULT · 8 bags + gold crate', '#5fd38d'], [-4, 11.5, -17, 'DEPOSIT BOXES', '#5fd38d']];
   // ---- floors
   F(-14, 14, -13, 0, 0, 'marble');                                    // lobby + tellers
@@ -78,7 +78,11 @@ function bank() {
   wallX(0, -14, 14, 0, 7, 'stone', [[-11, -4, 4.2, 1, 'glass'], [-1.6, 1.6, 2.6], [4, 11, 4.2, 1, 'glass']]);
   wallX(-20, -14, 14, -4, 7, 'stone');
   wallZ(-14, -20, 0, 0, 7, 'stone'); wallZ(-14, -20, -13, -4, 0, 'concrete');
-  wallZ(14, -20, 0, 0, 7, 'stone', [[-16.6, -15.4]]); wallZ(14, -20, -13, -4, 0, 'concrete');
+  wallZ(14, -20, 0, 0, 7, 'stone', [[-16.6, -15.4], [-14.8, -13.6, 5.7, 3.5]]); wallZ(14, -20, -13, -4, 0, 'concrete');
+  // fire escape in the alley: a steep iron stair up to a locked door on the office floor (too steep for anyone in uniform)
+  door('fire', 'z', 14, -14.8, -13.6, 3.5, { locked: true, name: 'Fire door' });
+  F(13.9, 16.6, -14.9, -13.5, 3.5, 'shelf'); L.ramps.push({ x0: 16.6, x1: 18.95, z0: -14.9, z1: -13.5, yA: 3.5, yB: 0, mat: 'shelf' });
+  B(16.6, 18.3, 0, 4.5, -14.96, -14.9, 'shelf', { opaque: false }); B(16.6, 18.3, 0, 4.5, -13.5, -13.44, 'shelf', { opaque: false }); B(14.15, 16.6, 3.5, 4.5, -14.96, -14.9, 'shelf', { opaque: false }); B(14.15, 16.6, 3.5, 4.5, -13.5, -13.44, 'shelf', { opaque: false });
   wallX(-13, -14, 14, -4, -.3, 'concrete');
   door('side', 'z', 14, -16.6, -15.4, 0, { locked: true, name: 'Alley door' });
 
@@ -93,6 +97,8 @@ function bank() {
   Mdl('rug_rectangle_A', -11.6, -5, 2.6, 4.6, .04, 0, Math.PI / 2, soft); Mdl('rug_rectangle_A', 11.6, -5, 2.6, 4.6, .04, 0, Math.PI / 2, soft);
   Mdl('pictureframe_large_A', -13.78, -5, .12, 1.6, 1.3, 2, Math.PI / 2, soft); Mdl('pictureframe_large_B', 13.78, -5, .12, 1.6, 1.3, 2, -Math.PI / 2, soft); Mdl('pictureframe_medium', -13.78, -1.5, .12, 1, .9, 2.1, Math.PI / 2, soft);
   Mdl('cactus_medium_A', -13.2, -9.2, .7, .7, 1.4, 0, 0, soft); Mdl('cactus_medium_A', 13.2, -.8, .7, .7, 1.4, 0, 0, soft);
+  // new accounts corner: two desks where customers sit with a clerk
+  Mdl('table_medium', 10.2, -1.6, 1.6, .9, .8, 0, 0); Mdl('chair_A', 10.2, -.7, .6, .6, 1, 0, 0, soft); Mdl('chair_B', 10.2, -2.6, .6, .6, 1, 0, Math.PI, soft); Mdl('table_medium', 6.6, -1.6, 1.6, .9, .8, 0, 0); Mdl('chair_A', 6.6, -.7, .6, .6, 1, 0, 0, soft); Mdl('chair_B', 6.6, -2.6, .6, .6, 1, 0, Math.PI, soft); Mdl('lamp_table', 10.7, -1.6, .3, .3, .5, .8, 0, soft); Mdl('book_set', 6.2, -1.6, .4, .3, .2, .8, 0, soft);
   Mdl('chair_stool', -6, -12, .5, .5, .7, 0, 0, soft); Mdl('chair_stool', 2, -12, .5, .5, .7, 0, 0, soft); Mdl('cabinet_medium', -10.5, -12.55, 1.6, .6, 1.1, 0, 0); Mdl('cabinet_small', 11.8, -12.55, 1, .6, 1.1, 0, 0);
   B(-6.5, -5.5, 0, 1.05, -3.2, -2.4, 'desk', { opaque: false }); B(5.5, 6.5, 0, 1.05, -3.2, -2.4, 'desk', { opaque: false });   // deposit-slip stands
 
@@ -404,7 +410,7 @@ function bodega() {
   Mdl('shelf_A_big', 1.5, -10.7, 2.2, .5, 2, 0, 0, { opaque: true }); Mdl('chair_stool', 4.8, -4.6, .5, .5, .7, 0, 0, soft); Mdl('cabinet_small', 5.5, -6.2, .7, 1, 1.1, 0, -Math.PI / 2); Mdl('trash_A', 5.4, -.8, .6, .6, .8, 0, 0); Mdl('pictureframe_medium', 5.82, -4.6, .12, 1, .8, 2, -Math.PI / 2, soft);
   L.lights.push([0, 3.2, -3.5, 0xe8f0ff, 1.3, 12], [0, 3.2, -9, 0xffe0b0, .8, 8]);
   L.cams.push({ id: 0, x: 5.6, y: 3.2, z: -.5, yaw: Math.atan2(-6, -5), pitch: -.45, sweep: .4, range: 11, name: 'Shop', floor: 0 });
-  L.guards.push({ look: 'male-e', name: 'Mr. Park', route: [{ x: 4, y: 0, z: -4.4, wait: 99 }], face: 0, card: 'a' });
+  L.guards.push({ look: 'm-casual', name: 'Mr. Park', route: [{ x: 4, y: 0, z: -4.4, wait: 99 }], face: 0, card: 'a' });
   const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
   civ(-2.1, -3.5, 0); civ(.8, -2.2, Math.PI); civ(-4.5, -4.8, -Math.PI / 2); civ(2.8, -4.6, 0, { teller: true });
   const I = (id, type, x, y, z, o) => L.inter.push(Object.assign({ id, type, x, y, z, r: 1.9 }, o || {}));
@@ -434,7 +440,7 @@ function pawn() {
   Mdl('armchair', 7.2, -7.2, 1, 1, .9, 0, -Math.PI / 2); Mdl('cabinet_medium_decorated', .8, -7.65, 1.6, .6, 1.1, 0, 0); Mdl('pictureframe_large_A', -4, -7.82, 1.5, .12, 1.1, 2.1, 0, soft); Mdl('rug_rectangle_A', 0, -3.6, 3, 5, .04, 0, Math.PI / 2, soft); Mdl('cactus_small_A', 7.4, -.7, .5, .5, .8, 0, 0, soft);
   L.lights.push([-3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [0, 3.4, -10.6, 0xffd0a0, .8, 10]);
   L.cams.push({ id: 0, x: 7.5, y: 3.5, z: -.5, yaw: Math.atan2(-8, -5), pitch: -.45, sweep: .45, range: 12, name: 'Shop', floor: 0 });
-  L.guards.push({ look: 'male-b', name: 'Sal Moretti', route: [{ x: -4, y: 0, z: -6.9, wait: 99 }], face: 0 });
+  L.guards.push({ look: 'm-beach', name: 'Sal Moretti', route: [{ x: -4, y: 0, z: -6.9, wait: 99 }], face: 0 });
   L.guards.push({ name: 'Officer Greer', route: [{ x: 3, y: 0, z: -10.2, wait: 5 }, { x: -5.5, y: 0, z: -10.2, wait: 5 }], card: 'a' });
   const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
   civ(-2, -3.6, Math.PI); civ(4.2, -3.8, Math.PI / 2); civ(-6, -4.2, -Math.PI / 2);

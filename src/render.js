@@ -188,26 +188,37 @@ function makeChar(spec) {
   R.scene.add(g);
   if (spec.model) getPerson(spec.model).then(gl => {
     if (!gl || o.dead) return;
-    const m = skClone(gl.scene); m.scale.setScalar((spec.tall || 1.6) / gl.h); g.add(m); o.mdl = m; body.visible = false;
+    const m = skClone(gl.scene), k = (spec.tall || 1.78) / gl.h; m.scale.setScalar(k); g.add(m); o.mdl = m; o.k = k; body.visible = false;
+    if (spec.tint) m.traverse(x => { if (x.isMesh && x.material && spec.tint[x.material.name] !== undefined) { x.material = x.material.clone(); x.material.color.setHex(spec.tint[x.material.name]); } });
     o.mixer = new T.AnimationMixer(m); o.acts = {}; for (const c of gl.animations) o.acts[c.name] = o.mixer.clipAction(c);
-    if (o.acts.die) { o.acts.die.setLoop(T.LoopOnce); o.acts.die.clampWhenFinished = true; }
+    if (o.acts.Death) { o.acts.Death.setLoop(T.LoopOnce); o.acts.Death.clampWhenFinished = true; }
     // things that used to hang off the box body now hang off the group
-    g.add(o.flash); o.flash.position.set(-.28, 1.0, .75);
-    if (o.pack) { g.add(o.pack, o.pack2); o.pack.position.set(0, 1.0, -.42); o.pack2.position.set(0, 1.38, -.44); }
-    const head = m.getObjectByName('head'), hm = m.getObjectByName('head-mesh');
-    if (spec.player && head && hm && hm.geometry) {                    // a bandit mask: a dark band across the eyes, riding the head bone
-      hm.geometry.computeBoundingBox(); const bb = hm.geometry.boundingBox, sz = bb.getSize(new T.Vector3()), c = bb.getCenter(new T.Vector3());
-      const band = new T.Mesh(new T.BoxGeometry(sz.x * 1.04, sz.y * .26, sz.z * 1.04), new T.MeshLambertMaterial({ color: 0x15151a }));
-      m.updateMatrixWorld(true); const wp = hm.localToWorld(c.clone()); head.worldToLocal(wp); band.position.copy(wp); band.position.y += sz.y * .02; band.visible = false; head.add(band); o.maskM = band;
+    g.add(o.flash); o.flash.position.set(-.22, 1.38, .8);
+    if (o.pack) { g.add(o.pack, o.pack2); o.pack.position.set(0, 1.2, -.3); o.pack2.position.set(0, 1.55, -.32); }
+    g.updateMatrixWorld(true);
+    const head = m.getObjectByName('Head'), arm = m.getObjectByName('LowerArmR'), ws = new T.Vector3();
+    if (head) {                                                         // masks and hats ride the head bone
+      head.getWorldScale(ws); const u = 1 / ws.y, onHead = (w, h, d, c, y, z) => { const b = new T.Mesh(new T.BoxGeometry(w * u, h * u, d * u), new T.MeshLambertMaterial({ color: c })); b.position.set(0, y * u, z * u); head.add(b); return b; };
+      if (spec.player) { o.maskM = onHead(.215, .25, .235, 0x16161b, .1, .01); const slit = onHead(.15, .04, .02, 0xd8b090, 0, 0); o.maskM.add(slit); slit.position.set(0, .035 * u, .118 * u); o.maskM.visible = false; }
+      if (spec.cap) { onHead(.225, .08, .245, spec.cap, .225, .005); onHead(.2, .022, .12, spec.cap, .195, .16); }
     }
+    if (arm) { arm.getWorldScale(ws); const u = 1 / ws.y; o.gunM = new T.Mesh(new T.BoxGeometry(.045 * u, (spec.long ? .62 : .24) * u, .1 * u), new T.MeshLambertMaterial({ color: 0x121316 })); o.gunM.position.set(0, (spec.long ? .42 : .34) * u, .03 * u); o.gunM.visible = false; arm.add(o.gunM); }
   });
   return o;
 }
-const PEOPLE = { crew: ['character-male-g', 'character-female-a', 'character-male-f', 'character-raider'], civ: ['character-male-a', 'character-female-b', 'character-male-b', 'character-female-c', 'character-male-e', 'character-female-f', 'character-worker'] };
+// who wears what (Quaternius Ultimate Modular Men / Women, CC0). Materials are flat colours, so uniforms are just tints.
+const CIVS = ['m-casual', 'w-casual', 'm-farmer', 'w-punk', 'm-beach', 'w-worker', 'm-hoodie'];
+const CREWLOOK = [['m-suit', { Suit: 0x4a3526, Tie: 0x8a1a1a }], ['w-suit', { Black: 0x5a1f2c }], ['m-hoodie', { Purple: 0x26466a }], ['m-punk', {}]];
 function specFor(e, isPlayer) {
   const s = specFor0(e, isPlayer);
-  s.model = isPlayer ? PEOPLE.crew[e.ch % 4] : e.lk ? 'character-' + e.lk : e.k === 'guard' || e.k === 'cop' ? 'character-male-c' : e.k === 'swat' ? 'character-soldier' : e.job === 2 ? 'character-male-d' : e.job === 1 ? ['character-female-d', 'character-female-e'][e.v % 2] : PEOPLE.civ[e.v % PEOPLE.civ.length];
-  if (e.k === 'swat') s.tall = 1.72;
+  if (isPlayer) { s.model = CREWLOOK[e.ch % 4][0]; s.tint = CREWLOOK[e.ch % 4][1]; }
+  else if (e.lk) { s.model = e.lk; s.tint = e.id % 2 ? { LightBrown: 0x6a5a3a } : {}; }
+  else if (e.k === 'guard') { s.model = 'm-suit'; s.tint = { Suit: 0x7f9cc4, Tie: 0x1c2438, White: 0x7f9cc4 }; s.cap = 0x1c2438; }
+  else if (e.k === 'cop') { s.model = 'm-suit'; s.tint = { Suit: 0x1c2a52, Tie: 0x0c1020, White: 0x9fb8dc }; s.cap = 0x141c38; }
+  else if (e.k === 'swat') { s.model = 'm-swat'; s.tall = 1.86; }
+  else if (e.job === 2) { s.model = 'm-suit'; s.tint = { Suit: 0x6a6e78 }; }
+  else if (e.job === 1) s.model = ['w-formal', 'w-suit'][e.v % 2];
+  else s.model = CIVS[e.v % CIVS.length];
   return s;
 }
 function specFor0(e, isPlayer) {
@@ -230,11 +241,14 @@ function pose(o, e, dt, kind, snap) {
   o.g.position.set(o.x, o.y, o.z); o.g.rotation.y = o.yaw;
   const sp = lying ? 0 : (e.mv || 0); o.ph += dt * (3 + sp * 2.1);
   if (o.mixer) {
-    const shooting = e.sh !== undefined && R.simT - e.sh < .3;
-    const want = lying ? 'die' : cower || crouch ? 'crouch' : sit ? 'sit' : sp > 4.8 ? 'sprint' : sp > .2 ? 'walk' : armed ? (shooting ? 'holding-right-shoot' : 'holding-right') : 'idle';
-    const a = o.acts[want] || o.acts.idle;
+    const shooting = e.sh !== undefined && R.simT - e.sh < .3, low = cower || crouch;
+    const want = lying ? 'Death' : cower ? 'HitRecieve' : sp > 4.8 ? (armed ? 'Run_Shoot' : 'Run') : sp > .2 ? 'Walk' : armed ? (shooting ? 'Idle_Gun_Shoot' : 'Idle_Gun') : 'Idle';
+    const a = o.acts[want] || o.acts.Idle;
     if (a && o.cur !== a) { a.reset().fadeIn(.16).play(); if (o.cur) o.cur.fadeOut(.16); o.cur = a; }
-    if (a) a.timeScale = want === 'walk' ? Math.max(.6, sp / 2.6) : 1;
+    if (a) a.timeScale = want === 'Walk' ? Math.max(.6, sp / 1.7) : want === 'Run' || want === 'Run_Shoot' ? Math.max(.8, sp / 5.5) : 1;
+    // the pack has no crouch or sit clips: squash and sink the figure instead
+    const sy = (lying ? 1 : cower ? .55 : low ? .7 : 1) * o.k; o.mdl.scale.y += (sy - o.mdl.scale.y) * k; o.mdl.position.y += ((sit ? -.42 : 0) - o.mdl.position.y) * k;
+    if (o.gunM) o.gunM.visible = armed && !lying;
     o.mixer.update(dt); if (o.flash.visible && (o.flashT -= dt) <= 0) o.flash.visible = false;
     return;
   }
