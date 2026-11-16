@@ -404,7 +404,7 @@ function bodega() {
   Mdl('shelf_A_big', 1.5, -10.7, 2.2, .5, 2, 0, 0, { opaque: true }); Mdl('chair_stool', 4.8, -4.6, .5, .5, .7, 0, 0, soft); Mdl('cabinet_small', 5.5, -6.2, .7, 1, 1.1, 0, -Math.PI / 2); Mdl('trash_A', 5.4, -.8, .6, .6, .8, 0, 0); Mdl('pictureframe_medium', 5.82, -4.6, .12, 1, .8, 2, -Math.PI / 2, soft);
   L.lights.push([0, 3.2, -3.5, 0xe8f0ff, 1.3, 12], [0, 3.2, -9, 0xffe0b0, .8, 8]);
   L.cams.push({ id: 0, x: 5.6, y: 3.2, z: -.5, yaw: Math.atan2(-6, -5), pitch: -.45, sweep: .4, range: 11, name: 'Shop', floor: 0 });
-  L.guards.push({ name: 'Mr. Park', route: [{ x: 4, y: 0, z: -4.4, wait: 99 }], face: 0, card: 'a' });
+  L.guards.push({ look: 'male-e', name: 'Mr. Park', route: [{ x: 4, y: 0, z: -4.4, wait: 99 }], face: 0, card: 'a' });
   const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
   civ(-2.1, -3.5, 0); civ(.8, -2.2, Math.PI); civ(-4.5, -4.8, -Math.PI / 2); civ(2.8, -4.6, 0, { teller: true });
   const I = (id, type, x, y, z, o) => L.inter.push(Object.assign({ id, type, x, y, z, r: 1.9 }, o || {}));
@@ -434,7 +434,7 @@ function pawn() {
   Mdl('armchair', 7.2, -7.2, 1, 1, .9, 0, -Math.PI / 2); Mdl('cabinet_medium_decorated', .8, -7.65, 1.6, .6, 1.1, 0, 0); Mdl('pictureframe_large_A', -4, -7.82, 1.5, .12, 1.1, 2.1, 0, soft); Mdl('rug_rectangle_A', 0, -3.6, 3, 5, .04, 0, Math.PI / 2, soft); Mdl('cactus_small_A', 7.4, -.7, .5, .5, .8, 0, 0, soft);
   L.lights.push([-3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [0, 3.4, -10.6, 0xffd0a0, .8, 10]);
   L.cams.push({ id: 0, x: 7.5, y: 3.5, z: -.5, yaw: Math.atan2(-8, -5), pitch: -.45, sweep: .45, range: 12, name: 'Shop', floor: 0 });
-  L.guards.push({ name: 'Sal Moretti', route: [{ x: -4, y: 0, z: -6.9, wait: 99 }], face: 0 });
+  L.guards.push({ look: 'male-b', name: 'Sal Moretti', route: [{ x: -4, y: 0, z: -6.9, wait: 99 }], face: 0 });
   L.guards.push({ name: 'Officer Greer', route: [{ x: 3, y: 0, z: -10.2, wait: 5 }, { x: -5.5, y: 0, z: -10.2, wait: 5 }], card: 'a' });
   const civ = (x, z, face, o) => L.civs.push(Object.assign({ x, y: 0, z, face }, o || {}));
   civ(-2, -3.6, Math.PI); civ(4.2, -3.8, Math.PI / 2); civ(-6, -4.2, -Math.PI / 2);

@@ -2,7 +2,8 @@
 import { L } from './level.js';
 import { CREW } from './data.js';
 import { decorate, decorateJewel } from './decor.js';
-import { fitted } from './models.js';
+import { fitted, getPerson } from './models.js';
+import { clone as skClone } from '../vendor/jsm/utils/SkeletonUtils.js';
 const T = window.THREE;
 
 export const R = { scene: null, cam: null, gl: null, chars: new Map(), fx: [], t: 0 };
@@ -184,9 +185,32 @@ function makeChar(spec) {
   o.mark = new T.Mesh(new T.OctahedronGeometry(.16), new T.MeshBasicMaterial({ color: 0xff3030, depthTest: false, transparent: true, opacity: .95, fog: false })); o.mark.position.y = 2.35; o.mark.renderOrder = 9; o.mark.visible = false; g.add(o.mark);
   o.ghost = new T.Mesh(new T.CylinderGeometry(.3, .3, 1.7, 8), new T.MeshBasicMaterial({ color: 0xff3030, depthTest: false, transparent: true, opacity: .2, fog: false })); o.ghost.position.y = .9; o.ghost.renderOrder = 8; o.ghost.visible = false; g.add(o.ghost);
   o.ph = Math.random() * 6; o.x = o.y = o.z = null; o.yaw = 0;
-  R.scene.add(g); return o;
+  R.scene.add(g);
+  if (spec.model) getPerson(spec.model).then(gl => {
+    if (!gl || o.dead) return;
+    const m = skClone(gl.scene); m.scale.setScalar((spec.tall || 1.6) / gl.h); g.add(m); o.mdl = m; body.visible = false;
+    o.mixer = new T.AnimationMixer(m); o.acts = {}; for (const c of gl.animations) o.acts[c.name] = o.mixer.clipAction(c);
+    if (o.acts.die) { o.acts.die.setLoop(T.LoopOnce); o.acts.die.clampWhenFinished = true; }
+    // things that used to hang off the box body now hang off the group
+    g.add(o.flash); o.flash.position.set(-.28, 1.0, .75);
+    if (o.pack) { g.add(o.pack, o.pack2); o.pack.position.set(0, 1.0, -.42); o.pack2.position.set(0, 1.38, -.44); }
+    const head = m.getObjectByName('head'), hm = m.getObjectByName('head-mesh');
+    if (spec.player && head && hm && hm.geometry) {                    // a bandit mask: a dark band across the eyes, riding the head bone
+      hm.geometry.computeBoundingBox(); const bb = hm.geometry.boundingBox, sz = bb.getSize(new T.Vector3()), c = bb.getCenter(new T.Vector3());
+      const band = new T.Mesh(new T.BoxGeometry(sz.x * 1.04, sz.y * .26, sz.z * 1.04), new T.MeshLambertMaterial({ color: 0x15151a }));
+      m.updateMatrixWorld(true); const wp = hm.localToWorld(c.clone()); head.worldToLocal(wp); band.position.copy(wp); band.position.y += sz.y * .02; band.visible = false; head.add(band); o.maskM = band;
+    }
+  });
+  return o;
 }
+const PEOPLE = { crew: ['character-male-g', 'character-female-a', 'character-male-f', 'character-raider'], civ: ['character-male-a', 'character-female-b', 'character-male-b', 'character-female-c', 'character-male-e', 'character-female-f', 'character-worker'] };
 function specFor(e, isPlayer) {
+  const s = specFor0(e, isPlayer);
+  s.model = isPlayer ? PEOPLE.crew[e.ch % 4] : e.lk ? 'character-' + e.lk : e.k === 'guard' || e.k === 'cop' ? 'character-male-c' : e.k === 'swat' ? 'character-soldier' : e.job === 2 ? 'character-male-d' : e.job === 1 ? ['character-female-d', 'character-female-e'][e.v % 2] : PEOPLE.civ[e.v % PEOPLE.civ.length];
+  if (e.k === 'swat') s.tall = 1.72;
+  return s;
+}
+function specFor0(e, isPlayer) {
   if (isPlayer) { const c = CREW[e.ch % 4]; return { player: true, coat: c.coat, pants: 0x1c1c22, hat: 'fedora', hatCol: c.hat, long: e.cls === 'muscle' }; }
   if (e.k === 'guard') return { coat: 0x7fa0c8, pants: 0x1c2438, hat: 'cap', hatCol: 0x1c2438, badge: 1, skin: [0xd9a880, 0x9a6a4a, 0xe8c0a0][e.v % 3] };
   if (e.k === 'cop') return { coat: 0x1c2a52, pants: 0x141c38, hat: 'cap', hatCol: 0x141c38, badge: 1, skin: [0xd9a880, 0x9a6a4a, 0xe8c0a0][e.v % 3] };
@@ -205,6 +229,15 @@ function pose(o, e, dt, kind, snap) {
   let dy = e.yaw - o.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; o.yaw += dy * k;
   o.g.position.set(o.x, o.y, o.z); o.g.rotation.y = o.yaw;
   const sp = lying ? 0 : (e.mv || 0); o.ph += dt * (3 + sp * 2.1);
+  if (o.mixer) {
+    const shooting = e.sh !== undefined && R.simT - e.sh < .3;
+    const want = lying ? 'die' : cower || crouch ? 'crouch' : sit ? 'sit' : sp > 4.8 ? 'sprint' : sp > .2 ? 'walk' : armed ? (shooting ? 'holding-right-shoot' : 'holding-right') : 'idle';
+    const a = o.acts[want] || o.acts.idle;
+    if (a && o.cur !== a) { a.reset().fadeIn(.16).play(); if (o.cur) o.cur.fadeOut(.16); o.cur = a; }
+    if (a) a.timeScale = want === 'walk' ? Math.max(.6, sp / 2.6) : 1;
+    o.mixer.update(dt); if (o.flash.visible && (o.flashT -= dt) <= 0) o.flash.visible = false;
+    return;
+  }
   const sw = sp > .2 ? Math.sin(o.ph) * Math.min(.9, .25 + sp * .12) : 0;
   const B = o.body; let by = 0, rx = 0, legBend = 0;
   if (lying) { rx = -Math.PI / 2; by = .22; } else if (cower) { by = -.55; legBend = 1.3; } else if (sit) { by = -.38; legBend = 1.45; } else if (crouch) { by = -.38; legBend = .9; }
@@ -229,14 +262,14 @@ export function addTracer(a, b, col) {
 export function muzzle(id) { const o = R.chars.get(id); if (o) { o.flash.visible = true; o.flashT = .05; } }
 
 export function renderFrame(S, me, dt, camState) {
-  R.t += dt; const sc = R.scene, seen = new Set();
+  R.t += dt; R.simT = S.t; const sc = R.scene, seen = new Set();
   // players
   for (const p of S.pl) {
     const key = 'p' + p.id; let o = R.chars.get(key); if (!o) { o = makeChar(specFor(p, true)); R.chars.set(key, o); }
     seen.add(key); o.g.visible = p.dn !== 2;
     const e = p.id === me.id && me.local ? Object.assign({}, p, me.local) : p;
     pose(o, e, dt, p.dn ? 'down' : e.cr ? 'crouch' : p.mk ? 'armed' : 'idle', p.id === me.id);
-    o.mask.visible = o.eyes[0].visible = o.eyes[1].visible = !!p.mk; o.pack.visible = p.bags > 0; o.pack2.visible = p.bags > 1;
+    o.mask.visible = o.eyes[0].visible = o.eyes[1].visible = !!p.mk; if (o.maskM) o.maskM.visible = !!p.mk; o.pack.visible = p.bags > 0; o.pack2.visible = p.bags > 1;
   }
   // npcs
   for (const n of S.npc) {
@@ -248,7 +281,7 @@ export function renderFrame(S, me, dt, camState) {
     o.mark.visible = o.ghost.visible = marked; if (marked) o.mark.rotation.y = R.t * 3;
     o.g.visible = !n.hid;
   }
-  for (const [k, o] of R.chars) if (!seen.has(k)) { sc.remove(o.g); R.chars.delete(k); }
+  for (const [k, o] of R.chars) if (!seen.has(k)) { o.dead = true; sc.remove(o.g); R.chars.delete(k); }
   // doors
   for (const k in R.doors) { const d = R.doors[k], st = S.doors[k], open = st && (st.o || st.n) ? 1 : 0; d.a += (open * 1.7 - d.a) * Math.min(1, dt * 8); d.g.rotation.y = L.doors[k].ax === 'x' ? -d.a : d.a; }
   if (R.vault) { R.vault.a += ((S.vault.open ? 2.1 : 0) - R.vault.a) * Math.min(1, dt * 1.5); R.vault.g.rotation.y = R.vault.a; R.vault.wheel.rotation.x = R.vault.a * 4; }

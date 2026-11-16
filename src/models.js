@@ -19,3 +19,13 @@ export async function fitted(name, w, h, d, ry, stretch) {
   if (stretch) g.scale.set(w / sz.x, h / sz.y, d / sz.z); else g.scale.setScalar(Math.min(w / sz.x, h / sz.y, d / sz.z));
   const wrap = new T.Group(); wrap.add(g); return wrap;
 }
+
+// rigged, animated people (Kenney Mini Characters, CC0)
+const people = new Map();
+export function getPerson(name) {
+  if (!people.has(name)) people.set(name, new Promise(res => loader.load('assets/people/' + name + '.glb', g => {
+    g.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+    g.h = new T.Box3().setFromObject(g.scene).getSize(new T.Vector3()).y || .7; res(g);
+  }, undefined, () => res(null))));
+  return people.get(name);
+}

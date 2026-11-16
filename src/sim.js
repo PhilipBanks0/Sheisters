@@ -25,7 +25,7 @@ export function createState(seats, favor, crew) {
   H.set(S, h);
   L.guards.forEach((g, i) => {
     const r = g.route[0];
-    S.npc.push({ id: h.nid, k: 'guard', nm: g.name, x: r.x, y: r.y, z: r.z, yaw: g.face || 0, st: 'idle', det: 0, mv: 0, card: g.card ? 1 : 0, v: i, hp: 70 });
+    S.npc.push({ id: h.nid, k: 'guard', nm: g.name, x: r.x, y: r.y, z: r.z, yaw: g.face || 0, st: 'idle', det: 0, mv: 0, card: g.card ? 1 : 0, v: i, hp: 70, lk: g.look || undefined });
     h.npc[h.nid++] = { route: g.route, ri: 0, wait: g.route.length > 1 ? 1 + i : 1e9, face: g.face, cd: 1 };
   });
   L.civs.forEach((c, i) => {
