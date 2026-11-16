@@ -1,19 +1,23 @@
 // SHEISTERS — the getaway chase view: an endless avenue recycled around the van.
 import { R, M, glow, label } from './render.js';
 import { CHASE } from './sim.js';
+import { fitted } from './models.js';
 const T = window.THREE;
 const C = { cars: new Map() };
 const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const SEG = 16, NB = 34;
+const CIV = [0x7a1d1d, 0x22405a, 0x55502a, 0x3a3a3e, 0xb8b0a0];
 
 function carMesh(kind, col) {
   const g = new T.Group(), std = (c, o) => new T.MeshStandardMaterial(Object.assign({ color: c, roughness: .35, metalness: .45 }, o || {}));
-  const body = new T.Mesh(new T.BoxGeometry(2, kind === 'van' ? 1.7 : .8, kind === 'van' ? 5.4 : 4.5), std(col)); body.position.y = kind === 'van' ? 1.25 : .75; body.castShadow = true; g.add(body);
+  const body = new T.Mesh(new T.BoxGeometry(2, kind === 'van' ? 1.7 : .8, kind === 'van' ? 5.4 : 4.5), std(kind === 'civ' ? CIV[col % 5] : col)); body.position.y = kind === 'van' ? 1.25 : .75; body.castShadow = true; g.add(body);
   if (kind !== 'van') { const top = new T.Mesh(new T.BoxGeometry(1.8, .6, 2.2), std(kind === 'cop' ? 0xe8e8e8 : 0x10141a, { roughness: .15 })); top.position.set(0, 1.42, -.2); g.add(top); }
   else { const win = new T.Mesh(new T.BoxGeometry(1.9, .6, .1), std(0x10141a, { roughness: .1 })); win.position.set(0, 1.6, 2.72); g.add(win); }
   for (const [x, z] of [[-1, 1.5], [1, 1.5], [-1, -1.5], [1, -1.5]]) { const w = new T.Mesh(new T.CylinderGeometry(.38, .38, .28, 10), new T.MeshLambertMaterial({ color: 0x0c0c0e })); w.rotation.z = Math.PI / 2; w.position.set(x, .38, z * (kind === 'van' ? 1.2 : 1)); g.add(w); }
   const lamp = (c, x, z) => { const m = new T.Mesh(new T.BoxGeometry(.4, .16, .08), new T.MeshBasicMaterial({ color: c })); m.position.set(x, .8, z); g.add(m); };
   const hz = kind === 'van' ? 2.72 : 2.27; lamp(0xfff2c0, -.7, hz); lamp(0xfff2c0, .7, hz); lamp(0xff2020, -.7, -hz); lamp(0xff2020, .7, -hz);
+  const boxy = g.children.slice(), name = kind === 'cop' ? 'car_police' : kind === 'civ' ? ['car_sedan', 'car_taxi', 'car_hatchback', 'car_stationwagon', 'car_taxi'][col % 5] : null;
+  if (name) fitted(name, 2.1, 1.7, 4.6, 0).then(m => { if (!m) return; boxy.forEach(o => { o.visible = false; }); g.add(m); });
   if (kind === 'cop') { g.userData.bar = [new T.Mesh(new T.BoxGeometry(.7, .18, .3), new T.MeshBasicMaterial({ color: 0xff2020 })), new T.Mesh(new T.BoxGeometry(.7, .18, .3), new T.MeshBasicMaterial({ color: 0x2040ff }))]; g.userData.bar[0].position.set(-.4, 1.82, -.2); g.userData.bar[1].position.set(.4, 1.82, -.2); g.add(...g.userData.bar); }
   return g;
 }
@@ -50,7 +54,6 @@ export function buildChase() {
 }
 
 const m4 = new T.Matrix4(), q = new T.Quaternion(), v3 = new T.Vector3(), s3 = new T.Vector3();
-const CIV = [0x7a1d1d, 0x22405a, 0x55502a, 0x3a3a3e, 0xb8b0a0];
 export function renderChase(S, me, dt, view) {
   const c = S.chase, sc = R.scene; R.t += dt;
   const vx = me.drive ? me.drive.x : c.x; C.vx = C.vx === null ? vx : C.vx + (vx - C.vx) * Math.min(1, dt * 12);
@@ -74,7 +77,7 @@ export function renderChase(S, me, dt, view) {
   // other cars
   const seen = new Set(); let nearCop = null, nd = 60;
   for (const car of c.cars) {
-    let o = C.cars.get(car.id); if (!o) { o = carMesh(car.k === 'civ' ? 'civ' : 'cop', car.k === 'civ' ? CIV[car.col % 5] : 0x1a2e5a); o.userData.x = car.x; o.userData.z = car.z; sc.add(o); C.cars.set(car.id, o); }
+    let o = C.cars.get(car.id); if (!o) { o = carMesh(car.k === 'civ' ? 'civ' : 'cop', car.k === 'civ' ? car.col : 0x1a2e5a); o.userData.x = car.x; o.userData.z = car.z; sc.add(o); C.cars.set(car.id, o); }
     seen.add(car.id); const k = Math.min(1, dt * 12); o.userData.x += (car.x - o.userData.x) * k; o.userData.z += (car.z + car.v * .04 - o.userData.z) * k;
     o.position.set(o.userData.x, 0, o.userData.z); o.rotation.y = car.k === 'block' ? Math.PI / 2 : car.st ? (car.st - 1) * car.spin : car.v < 0 ? Math.PI : 0;
     if (o.userData.bar) { const f = Math.sin(R.t * 12 + car.id) > 0 && !(car.st > 1.5); o.userData.bar[0].visible = f; o.userData.bar[1].visible = !f; const d = Math.abs(car.z - z); if (!car.st && d < nd) { nd = d; nearCop = o; } }

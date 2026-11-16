@@ -2,6 +2,7 @@
 import { L } from './level.js';
 import { CREW } from './data.js';
 import { decorate, decorateJewel } from './decor.js';
+import { fitted } from './models.js';
 const T = window.THREE;
 
 export const R = { scene: null, cam: null, gl: null, chars: new Map(), fx: [], t: 0 };
@@ -93,6 +94,11 @@ export function buildScene() {
   moon.shadow.mapSize.set(2048, 2048); const sh = moon.shadow.camera; sh.left = -45; sh.right = 45; sh.top = 40; sh.bottom = -40; sh.far = 140; moon.shadow.bias = -.0006; sc.add(moon);
   // static geometry
   const groups = {};
+  for (const b of L.boxes) if (b.model) {                            // a CC0 model stands in for this collision box; a plain box if it fails to load
+    fitted(b.model, b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0, b.ry, b.stretch).then(g => { if (R.scene !== sc) return;
+      if (!g) { g = new T.Mesh(new T.BoxGeometry(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0), M('desk')); g.position.y = (b.y1 - b.y0) / 2; const w = new T.Group(); w.add(g); g = w; }
+      g.position.set((b.x0 + b.x1) / 2, b.y0, (b.z0 + b.z1) / 2); sc.add(g); });
+  }
   for (const b of L.boxes) { if (b.invis || b.door || b.vault || b.mat === 'none') continue; (groups[b.mat] = groups[b.mat] || []).push(b); }
   for (const m in groups) { const mesh = mergedBoxes(groups[m], M(m), m === 'plaster' ? 3.2 : m === 'brick2' || m === 'brick3' ? 12 : 2.5); if (m === 'glass') { mesh.castShadow = false; mesh.renderOrder = 2; } sc.add(mesh); }
   // stairs

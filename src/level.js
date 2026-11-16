@@ -25,6 +25,9 @@ function wallRun(ax, c, a0, a1, y0, y1, mat, gaps) {
   }
   seg(at, a1, y0, y1);
 }
+// a prop drawn with a CC0 model: centre x,z, footprint w × d, height h, floor y, turn ry
+function Mdl(name, x, z, w, d, h, y, ry, o) { return B(x - w / 2, x + w / 2, y || 0, (y || 0) + h, z - d / 2, z + d / 2, 'none', Object.assign({ model: name, ry: ry || 0, opaque: false }, o || {})); }
+const soft = { solid: false };                                        // rugs, pictures: seen, never bumped into
 function door(id, ax, c, a0, a1, y0, o) {
   const b = ax === 'x' ? B(a0, a1, y0, y0 + 2.2, c - .08, c + .08, 'door') : B(c - .08, c + .08, y0, y0 + 2.2, a0, a1, 'door');
   b.door = id;
@@ -44,9 +47,13 @@ function street() {
   B(-40, -22, 0, 22, 18, 30, 'brick3', { skyline: true }); B(-22, -4, 0, 30, 18, 30, 'brick2', { skyline: true });
   B(-4, 16, 0, 18, 18, 30, 'brick', { skyline: true }); B(16, 40, 0, 26, 18, 30, 'brick3', { skyline: true });
   B(-40.3, -40, 0, 8, 0, 18, 'none', { opaque: false, invis: true }); B(40, 40.3, 0, 8, 0, 18, 'none', { opaque: false, invis: true });
-  B(15.2, 17, 0, 1.3, -22.5, -19.5, 'dumpster');                      // dumpster
+  Mdl('dumpster', 16.1, -21, 1.8, 3, 1.5, 0, Math.PI / 2, { opaque: true });
   B(5, 10.6, 0, 2.2, 5, 7.4, 'van', { van: true });                   // the getaway van (rear at x=5)
-  B(-13, -8.6, 0, 1.4, 5, 6.9, 'car1', { car: true }); B(-25, -20.6, 0, 1.4, 11.2, 13.1, 'car2', { car: true }); B(22, 26.4, 0, 1.4, 5, 6.9, 'car3', { car: true });
+  Mdl('car_sedan', -10.8, 5.95, 4.4, 1.9, 1.5, 0, Math.PI / 2, { car: true, opaque: true }); Mdl('car_taxi', -22.8, 12.15, 4.4, 1.9, 1.5, 0, -Math.PI / 2, { car: true, opaque: true, kerb: 1 }); Mdl('car_hatchback', 24.2, 5.95, 4.4, 1.9, 1.5, 0, Math.PI / 2, { car: true, opaque: true });
+  Mdl('car_stationwagon', -30, 5.95, 4.4, 1.9, 1.5, 0, Math.PI / 2, { car: true, opaque: true, kerb: 1 }); Mdl('car_sedan', 31, 12.15, 4.4, 1.9, 1.5, 0, -Math.PI / 2, { car: true, opaque: true });
+  Mdl('bench', -17.5, .9, 1.8, .7, .9, 0, 0); Mdl('bench', 20.5, .9, 1.8, .7, .9, 0, 0); Mdl('trash_A', -20, 1, .7, .7, .9, 0, 0); Mdl('trash_B', 12.4, 2.8, .7, .7, .9, 0, 0); Mdl('trash_A', 27, 15.4, .7, .7, .9, 0, 0);
+  Mdl('box_A', 15, -6, .9, .9, .9, 0, .3); Mdl('box_B', 18.2, -3, .9, .9, .9, 0, 1); Mdl('box_A', 18.3, -17.5, 1, 1, 1, 0, 0); Mdl('trafficlight_A', -36, 3.4, .5, .5, 5, 0, Math.PI / 2, soft); Mdl('trafficlight_A', 36, 14.6, .5, .5, 5, 0, -Math.PI / 2, soft);
+  Mdl('bush', -26, 1.2, 1.4, 1, 1, 0, 0, soft); Mdl('bush', 29.5, 1.2, 1.4, 1, 1, 0, 0, soft);
   B(-6.4, -6.0, 0, 2.4, 1.3, 1.7, 'phone'); B(12.2, 12.8, 0, 1.1, 1.2, 1.8, 'hydrant', { opaque: false });
 
 }
@@ -81,19 +88,24 @@ function bank() {
   B(-14, 8, 0, 1.1, -10.4, -9.8, 'counter'); B(9.2, 14, 0, 1.1, -10.4, -9.8, 'counter');
   B(-14, 8, 1.1, 2.5, -10.15, -10.05, 'glass', { opaque: false, glass: true }); B(9.2, 14, 1.1, 2.5, -10.15, -10.05, 'glass', { opaque: false, glass: true });
   for (const x of [-9, -3, 3]) { B(x - .35, x + .35, 0, 7, -5.35, -4.65, 'column'); }
-  B(-13.6, -12.6, 0, .5, -8, -2, 'bench', { opaque: false }); B(12.6, 13.6, 0, .5, -8, -2, 'bench', { opaque: false });
+  Mdl('couch', -13.15, -6.6, .95, 2.4, .9, 0, Math.PI / 2); Mdl('couch_pillows', -13.15, -3.2, .95, 2.4, .9, 0, Math.PI / 2); Mdl('table_low', -11.9, -4.9, .7, 1, .45, 0, 0);
+  Mdl('couch', 13.15, -6.6, .95, 2.4, .9, 0, -Math.PI / 2); Mdl('armchair', 13.1, -3.6, 1, 1, .9, 0, -Math.PI / 2); Mdl('armchair', 13.1, -2.3, 1, 1, .9, 0, -Math.PI / 2); Mdl('lamp_standing', 13.4, -8.4, .5, .5, 1.9, 0, 0);
+  Mdl('rug_rectangle_A', -11.6, -5, 2.6, 4.6, .04, 0, Math.PI / 2, soft); Mdl('rug_rectangle_A', 11.6, -5, 2.6, 4.6, .04, 0, Math.PI / 2, soft);
+  Mdl('pictureframe_large_A', -13.78, -5, .12, 1.6, 1.3, 2, Math.PI / 2, soft); Mdl('pictureframe_large_B', 13.78, -5, .12, 1.6, 1.3, 2, -Math.PI / 2, soft); Mdl('pictureframe_medium', -13.78, -1.5, .12, 1, .9, 2.1, Math.PI / 2, soft);
+  Mdl('cactus_medium_A', -13.2, -9.2, .7, .7, 1.4, 0, 0, soft); Mdl('cactus_medium_A', 13.2, -.8, .7, .7, 1.4, 0, 0, soft);
+  Mdl('chair_stool', -6, -12, .5, .5, .7, 0, 0, soft); Mdl('chair_stool', 2, -12, .5, .5, .7, 0, 0, soft); Mdl('cabinet_medium', -10.5, -12.55, 1.6, .6, 1.1, 0, 0); Mdl('cabinet_small', 11.8, -12.55, 1, .6, 1.1, 0, 0);
   B(-6.5, -5.5, 0, 1.05, -3.2, -2.4, 'desk', { opaque: false }); B(5.5, 6.5, 0, 1.05, -3.2, -2.4, 'desk', { opaque: false });   // deposit-slip stands
 
   // ---- ground floor back strip
   wallZ(-7, -20, -13, 0, 3.2, 'plaster', [[-16.2, -15]]);
   door('sec', 'z', -7, -16.2, -15, 0, { locked: true, name: 'Security room' });
   B(-13.6, -12.8, 0, 1.2, -18.5, -15, 'console');                     // camera console
-  B(-12, -11.2, 0, .5, -17.2, -16.4, 'chair', { opaque: false, solid: false });
+  Mdl('chair_C', -11.7, -16.8, .7, .7, 1, 0, -Math.PI / 2, soft); Mdl('cabinet_medium_decorated', -8, -19.5, 1.5, .6, 1.2, 0, 0); Mdl('table_small', -8.2, -13.9, .9, .9, .8, 0, 0); Mdl('chair_A', -9.3, -13.9, .6, .6, 1, 0, Math.PI / 2, soft);
   wallX(-18, -4, 4, 0, 1.05, 'rail', []); L.boxes[L.boxes.length - 1].opaque = false;     // railing round the stairwell
   wallZ(4, -20, -18, 0, 3.2, 'plaster');
   wallX(-18, 6, 12.5, 0, 3.2, 'plaster');
   B(12.5, 13.9, 0, 3.2, -20, -18, 'plaster');                         // solid block under the top landing
-  B(9, 12, 0, 1.0, -14.2, -13.4, 'cabinet', { opaque: false });
+  Mdl('cabinet_medium_decorated', 9.8, -13.6, 1.5, .6, 1.1, 0, Math.PI); Mdl('cabinet_small_decorated', 11.5, -13.6, 1, .6, 1.1, 0, Math.PI); Mdl('pictureframe_medium', 2, -13.22, 1, .12, .9, 1.6, Math.PI, soft); Mdl('cactus_small_A', 13.3, -17.2, .5, .5, .8, 0, 0, soft);
 
   // ---- basement
   wallX(-18, -4, 4, -4, -.3, 'concrete');
@@ -111,9 +123,11 @@ function bank() {
   door('mgr', 'z', -2, -16.2, -15, 3.5, { name: "Manager's office" });
   wallX(-18, 6, 12.5, 3.5, 4.5, 'rail'); L.boxes[L.boxes.length - 1].opaque = false;
   wallZ(6, -20, -18, 3.5, 4.5, 'rail'); L.boxes[L.boxes.length - 1].opaque = false;
-  B(-10.5, -7.5, 3.5, 4.3, -17.2, -16, 'desk', { opaque: false });   // manager's desk
-  B(-13.7, -13, 3.5, 5.3, -19.5, -17.5, 'cabinet');
-  B(2, 5, 3.5, 4.3, -14.3, -13.5, 'cabinet', { opaque: false });
+  Mdl('table_medium_long', -9, -16.6, 3, 1.2, .8, 3.5, 0, { stretch: true });   // manager's desk
+  Mdl('shelf_A_big', -13.55, -18.5, .6, 2, 1.9, 3.5, Math.PI / 2, { opaque: true }); Mdl('shelf_A_big', -13.55, -15.2, .6, 2, 1.9, 3.5, Math.PI / 2, { opaque: true });
+  Mdl('couch_pillows', -4.6, -19.3, 2.4, .95, .9, 3.5, 0); Mdl('armchair_pillows', -2.8, -14, 1, 1, .9, 3.5, Math.PI); Mdl('lamp_standing', -2.6, -19.4, .5, .5, 1.9, 3.5, 0); Mdl('rug_oval_A', -5, -15.2, 3, 2, .04, 3.5, 0, soft);
+  Mdl('pictureframe_large_A', -8, -19.82, 1.6, .12, 1.3, 5, 0, soft); Mdl('chair_A', -10.5, -15.4, .6, .6, 1, 3.5, Math.PI, soft); Mdl('chair_A', -7.5, -15.4, .6, .6, 1, 3.5, Math.PI, soft);
+  Mdl('cabinet_medium_decorated', 3.5, -13.7, 1.6, .6, 1.1, 3.5, Math.PI); Mdl('couch', 9, -13.75, 2.4, .95, .9, 3.5, Math.PI); Mdl('cactus_medium_A', 5.3, -13.6, .6, .6, 1.3, 3.5, 0, soft); Mdl('pictureframe_large_B', 8.5, -13.2, 1.6, .12, 1.2, 5, Math.PI, soft); Mdl('table_low', 9, -15, 1.2, .7, .45, 3.5, 0);
 
   // ---- lights (x, y, z, colour, intensity, distance)
   for (const x of [-8, 0, 8]) L.lights.push([x, 6.2, -5, 0xffe2b0, 1.1, 22]);
@@ -349,8 +363,11 @@ function jewel() {
   for (const [x, z] of L.cases) { B(x - .8, x + .8, 0, .9, z - .4, z + .4, 'counter', { opaque: false }); B(x - .78, x + .78, .9, 1.25, z - .38, z + .38, 'glass', { opaque: false, glass: true, solid: false }); }
   B(-1.6, 1.6, 0, 1.05, -7.1, -6.5, 'counter', { opaque: false });
   B(-13.7, -12.6, 0, 1.5, -11.6, -10.4, 'vaultdoor');                 // the office safe
-  B(-11, -9, 0, 1.1, -13.8, -13.2, 'console'); B(-9.5, -7.5, 0, .8, -9.6, -8.6, 'desk', { opaque: false });
-  B(4, 13, 0, 2.2, -13.85, -13.3, 'shelf'); B(-5.6, -5, 0, 2.2, -13.5, -12, 'shelf'); B(6, 9, 0, 1, -9, -8.3, 'cabinet', { opaque: false });
+  B(-11, -9, 0, 1.1, -13.8, -13.2, 'console'); Mdl('table_medium_long', -8.5, -9.1, 2.2, 1, .8, 0, 0, { stretch: true });
+  Mdl('chair_C', -8.5, -10.2, .7, .7, 1, 0, Math.PI, soft); Mdl('rug_oval_A', -10, -11, 3.4, 2.4, .04, 0, 0, soft); Mdl('lamp_standing', -6.5, -13.5, .5, .5, 1.9, 0, 0); Mdl('pictureframe_large_A', -13.8, -9.4, .12, 1.4, 1.1, 1.8, Math.PI / 2, soft);
+  Mdl('armchair', -12.9, -1.2, 1, 1, .9, 0, Math.PI / 2); Mdl('armchair', 12.9, -1.2, 1, 1, .9, 0, -Math.PI / 2); Mdl('cactus_medium_A', -13.2, -7.3, .7, .7, 1.4, 0, 0, soft); Mdl('cactus_medium_A', 13.2, -7.3, .7, .7, 1.4, 0, 0, soft);
+  Mdl('pictureframe_large_B', -6, -7.82, 1.6, .12, 1.2, 2, 0, soft); Mdl('pictureframe_large_A', 9, -7.82, 1.6, .12, 1.2, 2, 0, soft); Mdl('box_A', 12.6, -9, 1, 1, 1, 0, 0); Mdl('box_B', 11.4, -8.9, .9, .9, .9, 0, .5); Mdl('box_A', 1, -13.3, 1, 1, 1, 0, 0); Mdl('cabinet_medium', -3.5, -13.55, 1.6, .6, 1.1, 0, 0);
+  Mdl('shelf_A_big', 5.5, -13.55, 2.6, .6, 2.2, 0, 0, { opaque: true }); Mdl('shelf_A_big', 8.5, -13.55, 2.6, .6, 2.2, 0, 0, { opaque: true }); Mdl('shelf_A_big', 11.5, -13.55, 2.6, .6, 2.2, 0, 0, { opaque: true }); Mdl('shelf_A_big', -5.3, -12.75, .6, 1.6, 2.2, 0, Math.PI / 2, { opaque: true }); Mdl('cabinet_medium_decorated', 7.5, -8.6, 1.6, .6, 1.1, 0, Math.PI);
   for (const x of [-8, 0, 8]) L.lights.push([x, 3.9, -4, 0xfff0d8, 1.2, 16]);
   L.lights.push([4, 3.6, -11, 0xfff0d0, .8, 14], [-10, 3.6, -11, 0xffd0a0, .8, 10], [16.5, 4, -11, 0xff8844, .9, 12]);
   L.cams.push({ id: 0, x: 13.4, y: 3.8, z: -.6, yaw: Math.atan2(-10, -5), pitch: -.4, sweep: .5, range: 16, name: 'Showroom', floor: 0 });
@@ -383,7 +400,8 @@ function bodega() {
   wallX(-7, -6, 6, 0, 3.6, 'plaster', [[-4.6, -3.4]]); door('back', 'x', -7, -4.6, -3.4, 0, { locked: true, name: 'Storage' });
   B(-3.6, -3, 0, 1.7, -5.6, -1.6, 'shelf'); B(-1.2, -.6, 0, 1.7, -5.6, -1.6, 'shelf'); B(-5.85, -5.35, 0, 2.1, -6.6, -1.6, 'cabinet');
   B(2.2, 5.85, 0, 1.05, -3.4, -2.8, 'counter', { opaque: false }); B(-5.85, -5.3, 0, 1.6, -1.2, -.5, 'console');
-  B(4.6, 5.7, 0, 1, -10.7, -9.6, 'vaultdoor'); B(-5.6, -2, 0, 1.4, -10.75, -9.9, 'pallet');
+  B(4.6, 5.7, 0, 1, -10.7, -9.6, 'vaultdoor'); Mdl('box_A', -5.1, -10.3, 1, 1, 1, 0, 0); Mdl('box_B', -3.9, -10.4, 1, 1, .9, 0, .4); Mdl('box_A', -2.7, -10.3, 1, 1, 1, 0, .2); Mdl('box_B', -5, -8.4, .9, .9, .9, 0, 1);
+  Mdl('shelf_A_big', 1.5, -10.7, 2.2, .5, 2, 0, 0, { opaque: true }); Mdl('chair_stool', 4.8, -4.6, .5, .5, .7, 0, 0, soft); Mdl('cabinet_small', 5.5, -6.2, .7, 1, 1.1, 0, -Math.PI / 2); Mdl('trash_A', 5.4, -.8, .6, .6, .8, 0, 0); Mdl('pictureframe_medium', 5.82, -4.6, .12, 1, .8, 2, -Math.PI / 2, soft);
   L.lights.push([0, 3.2, -3.5, 0xe8f0ff, 1.3, 12], [0, 3.2, -9, 0xffe0b0, .8, 8]);
   L.cams.push({ id: 0, x: 5.6, y: 3.2, z: -.5, yaw: Math.atan2(-6, -5), pitch: -.45, sweep: .4, range: 11, name: 'Shop', floor: 0 });
   L.guards.push({ name: 'Mr. Park', route: [{ x: 4, y: 0, z: -4.4, wait: 99 }], face: 0, card: 'a' });
@@ -411,7 +429,9 @@ function pawn() {
   L.cases = [[-5.5, -2.6], [-2, -2.6], [2, -2.6], [5.5, -2.6], [5.6, -5.4]];
   for (const [x, z] of L.cases) { B(x - .8, x + .8, 0, .9, z - .4, z + .4, 'counter', { opaque: false }); B(x - .78, x + .78, .9, 1.25, z - .38, z + .38, 'glass', { opaque: false, glass: true, solid: false }); }
   B(-6.5, -1, 0, 1.05, -6.1, -5.5, 'counter', { opaque: false }); B(-7.8, -7.2, 0, 2.2, -7.6, -1.2, 'shelf');
-  B(5.9, 7.2, 0, 1.4, -12.3, -11, 'vaultdoor'); B(-7.5, -3, 0, 1.8, -12.8, -12.2, 'shelf'); B(-2, .5, 0, .8, -11, -10, 'desk', { opaque: false });
+  B(5.9, 7.2, 0, 1.4, -12.3, -11, 'vaultdoor'); Mdl('shelf_A_big', -6.4, -12.7, 2.4, .55, 2, 0, 0, { opaque: true }); Mdl('shelf_A_big', -3.9, -12.7, 2.4, .55, 2, 0, 0, { opaque: true }); Mdl('table_medium', -.8, -10.5, 1.6, 1, .8, 0, 0); Mdl('chair_B', -.8, -11.5, .6, .6, 1, 0, Math.PI, soft);
+  Mdl('couch', 1.8, -12.5, 2.2, .9, .9, 0, 0); Mdl('box_A', -7.3, -9, 1, 1, 1, 0, 0); Mdl('box_B', -7.3, -10.1, .9, .9, .9, 0, .6); Mdl('lamp_standing', 3.2, -8.5, .5, .5, 1.9, 0, 0);
+  Mdl('armchair', 7.2, -7.2, 1, 1, .9, 0, -Math.PI / 2); Mdl('cabinet_medium_decorated', .8, -7.65, 1.6, .6, 1.1, 0, 0); Mdl('pictureframe_large_A', -4, -7.82, 1.5, .12, 1.1, 2.1, 0, soft); Mdl('rug_rectangle_A', 0, -3.6, 3, 5, .04, 0, Math.PI / 2, soft); Mdl('cactus_small_A', 7.4, -.7, .5, .5, .8, 0, 0, soft);
   L.lights.push([-3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [3.5, 3.4, -4, 0xffe2b0, 1.1, 13], [0, 3.4, -10.6, 0xffd0a0, .8, 10]);
   L.cams.push({ id: 0, x: 7.5, y: 3.5, z: -.5, yaw: Math.atan2(-8, -5), pitch: -.45, sweep: .45, range: 12, name: 'Shop', floor: 0 });
   L.guards.push({ name: 'Sal Moretti', route: [{ x: -4, y: 0, z: -6.9, wait: 99 }], face: 0 });
@@ -433,10 +453,10 @@ function truck() {
   L.lootMark = [-13.4, 1.6, 10.75]; L.objSafe = "Crack the truck's rear doors"; L.bagV = 14000; L.waveFirst = 14; L.objLoose = 'Three couriers guard the truck — drop them quietly or hit them hard';
   L.pins = [[0, 7.3, 6.2, 'VAN', '#5fd38d'], [0, -14.2, 10.75, 'REAR DOORS · 3 crates', '#5fd38d']];
   B(-14, 14, 0, 14, -26, 0, 'brick2', { skyline: true });
-  L.boxes = L.boxes.filter(b => b.mat !== 'car2');                    // clear the kerb for the truck
+  L.boxes = L.boxes.filter(b => !b.kerb);                    // clear the kerb for the truck
   B(-22.5, -15, 0, 2.7, 9.6, 11.9, 'dumpster', { car: true });        // the truck body
   B(-24.6, -22.5, 0, 2.1, 9.8, 11.7, 'cabinet', { car: true });       // its cab
-  B(-10.5, -9.5, 0, 1.1, 12.4, 13.4, 'pallet', { opaque: false }); B(-12.4, -11.4, 0, .9, 7.2, 8.2, 'pallet', { opaque: false });
+  Mdl('box_A', -10, 12.9, 1.1, 1.1, 1.1, 0, .2); Mdl('box_B', -11.9, 7.7, 1, 1, .9, 0, .8); Mdl('box_A', -27.5, 12.6, 1.2, 1.2, 1.2, 0, 0); Mdl('box_B', -9.2, 8.4, .9, .9, .9, 0, 0); Mdl('trash_A', -26.5, 7.4, .7, .7, .9, 0, 0);
   L.lights.push([-18, 5.2, 10.7, 0xfff0d0, 1.1, 16]);
   L.guards.push({ name: 'Courier Banks', route: [{ x: -13.6, y: 0, z: 10.8, wait: 99 }], face: Math.PI / 2 });
   L.guards.push({ name: 'Courier Hale', route: [{ x: -16, y: 0, z: 8.6, wait: 4 }, { x: -24, y: 0, z: 8.6, wait: 4 }] });
