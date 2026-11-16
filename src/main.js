@@ -1,8 +1,9 @@
 // SHEISTERS — client: menus, controls, networking, HUD, main loop.
 import { L, groundAt, moveCircle, rayT, buildLevel, restricted } from './level.js';
 import { CREW, CLASSES, CLASS_IDS, FAVORS, CALLOUTS, TASKS, JOBS, GUNS, ARMOR, CARS, BRIBES, gunOf, loadSave, saveSave, perkPoints, xpFor, money } from './data.js';
-import { abort, createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
+import { CHASE, abort, createState, update, snapshot, syncLevel, playerEvent, interList, bestInter, objectives, isBody } from './sim.js';
 import { R, initRender, buildScene, renderFrame, menuFrame, project, addTracer, muzzle } from './render.js';
+import { buildChase, renderChase } from './chase.js';
 import { sfx, music, unlockAudio, setVol } from './audio.js';
 
 const $ = s => document.querySelector(s), ui = $('#ui'), hud = $('#hud'), hc = $('#hud2d'), g2 = hc.getContext('2d');
@@ -10,6 +11,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), esc = s => String(s).rep
 const G = { save: loadSave(), phase: 'title', role: null, id: 0, code: '', S: null, lobby: null, err: '', feed: [], bubbles: [], hurtT: 0, hint: '', hintT: 0 };
 const me = { id: 0, local: null, vy: 0, ammo: 0, reload: 0, cd: 0, snapT: 0, sendT: 0 };
 if (G.save.sens === undefined) G.save.sens = 1; if (G.save.vol === undefined) G.save.vol = .7; setVol(G.save.vol);
+window.IN_test = () => { IN.locked = true; };
 window.G = G; window.ME = me; window.R_info = () => ({ calls: R.gl.info.render.calls, tris: R.gl.info.render.triangles });                                        // handy for testing from the console
 
 // ------------------------------------------------------------------ input
@@ -107,7 +109,7 @@ function hostStart() {
 }
 function setJob(job) { buildLevel(job); buildScene(); }
 function beginHeist(S) {
-  G.paused = undefined; G.started = false;
+  G.paused = undefined; G.started = false; G.chaseOn = false; me.drive = null;
   G.S = S; G.phase = 'heist'; G.feed = []; G.bubbles = []; G.tipQ = []; G.tipNow = null; G.rewarded = false; G.overT = 0; me.local = null; me.reload = 0; me.cd = 0; G.masked = false;
   buildScene(); ui.innerHTML = ''; ui.className = ''; hud.style.display = hc.style.display = 'block'; music('stealth');
   say('Case the joint. Nobody notices you until the mask goes on — [G].', '');
@@ -122,7 +124,7 @@ function takeEvents(S) {
     else if (e.k === 'say') { G.bubbles.push({ p: e.p, n: e.n, s: e.s, t: 3.5 }); if (e.p !== undefined) { const p = S.pl.find(p => p.id === e.p); say((p ? p.name : '?') + ': “' + e.s + '”', 'call'); sfx('click'); } }
     else if (e.k === 'shot') { addTracer(e.a, e.b, e.w === 'cop' ? 0xff9a6a : 0xffe9a0); sfx(e.w, clamp(1.15 - Math.hypot(e.a[0] - cam.x, e.a[2] - cam.z) / 45, 0, 1) * (e.p === me.id ? .9 : .7)); if (e.p !== undefined) muzzle('p' + e.p); if (e.hit && e.p === me.id) G.hitT = .15; }
     else if (e.k === 'cash') say('+' + money(e.v), 'good');
-    else if (e.k === 'hurt' && e.p === me.id) { G.hurtT = .5; sfx('hurt'); }
+    else if (e.k === 'hurt' && (e.p === me.id || e.all)) { G.hurtT = .5; sfx('hurt'); }
   }
   S.ev = [];
 }
@@ -197,6 +199,10 @@ function control(dt) {
   if (G.role === 'guest') { me.sendT -= dt; if (me.sendT <= 0) { me.sendT = 1 / 18; const r = v => Math.round(v * 100) / 100; netSend({ t: 'p', v: [r(l.x), r(l.y), r(l.z), r(l.yaw), r(l.pitch), l.cr, r(l.mv)], it: l.it }); } }
   else if (alive) { p.x = l.x; p.y = l.y; p.z = l.z; p.yaw = l.yaw; p.pitch = l.pitch; p.cr = l.cr; p.mv = l.mv; p.it = l.it; } else p.it = null;
 }
+function pauseUi(S) {
+  const wantPause = !IN.locked && !S.over && !R.noDraw;
+  if (wantPause !== !!G.paused) { G.paused = wantPause; ui.className = wantPause ? 'pause' : ''; ui.innerHTML = wantPause ? `<div class="card pz"><h3>${G.started ? 'PAUSED' : esc(L.name.toUpperCase())}</h3><p class="dim">${G.role === 'guest' || G.role === 'host' ? 'The job keeps running for the crew.' : 'Solo jobs keep running too. Find a quiet corner.'}</p><button data-a="resume" class="big">${G.started ? 'Back to work' : 'Start — click to take control'}</button><button data-a="quit" class="ghost">${G.role === 'guest' ? 'Leave the crew' : 'Call off the job'}</button></div>` : ''; }
+}
 function hint(s) { G.hint = s; G.hintT = 1.6; }
 // first-time lessons: each shows once per save, one at a time
 const TIPS = {
@@ -219,6 +225,58 @@ function tipsTick(dt, S, p, l) {
   if (p.bags) tip('bag'); if (S.loud) tip('loud'); if (p.dn === 1) tip('down');
   if (G.tipNow) { G.tipT -= dt; if (G.tipT <= 0) G.tipNow = null; }
   else if (G.tipQ.length) { G.tipNow = G.tipQ.shift(); G.tipT = 9; G.save.tips[G.tipNow] = 1; saveSave(G.save); sfx('ping', .5); }
+}
+
+// ------------------------------------------------------------------ the getaway chase: one drives, the rest shoot
+function chaseControl(dt) {
+  const S = G.S, c = S.chase, p = myP(), pad = readPad(dt), P = IN.pressed;
+  const driving = p && !p.dn && c.driver === me.id && !S.over;
+  if (driving) {
+    const d = me.drive || (me.drive = { x: c.x, v: c.v });
+    const steer = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + pad.mx;
+    const gas = keys.KeyW || keys.ArrowUp || pad.shoot, brake = keys.KeyS || keys.ArrowDown || pad.aim;
+    const want = brake ? 12 : gas ? c.top + 8 : c.top;
+    d.v += clamp(want - d.v, -20 * dt, 7 * dt); if (Math.abs(d.v - c.v) > 10) d.v = c.v;      // the host slowed us (a crash)
+    d.x = clamp(d.x - steer * (6 + d.v * .2) * dt, -CHASE.half, CHASE.half);                   // +X is screen-left when looking down the road
+    me.sendT -= dt; if (G.role !== 'guest' || me.sendT <= 0) { me.sendT = 1 / 18; sendEv({ k: 'drive', x: Math.round(d.x * 100) / 100, v: Math.round(d.v * 10) / 10 }); }
+    G.cview = { gunner: false };
+  } else {
+    me.drive = null;
+    me.gy -= (IN.lx * .0023 + pad.lx) * G.save.sens; me.gp = clamp(me.gp - (IN.ly * .0021 + pad.ly) * G.save.sens, -.5, .5);
+    G.cview = { gunner: true, yaw: me.gy, pitch: me.gp };
+    if (p && !p.dn && !S.over) {
+      const gun = gunOf(p); me.cd -= dt; if (me.reload > 0 && (me.reload -= dt) <= 0) me.ammo = gun.mag;
+      if (P.KeyR && me.ammo < gun.mag && me.reload <= 0) { me.reload = 1.5; sfx('unlock', .6); }
+      if ((gun.auto ? (IN.shoot || pad.shoot) : P.Shoot) && me.reload <= 0 && me.cd <= 0) {
+        if (me.ammo <= 0) { me.reload = 1.5; sfx('unlock', .6); }
+        else { const cp = Math.cos(me.gp), cam = R.cam.position; sendEv({ k: 'shot', o: [cam.x, cam.y, cam.z], d: [Math.sin(me.gy) * cp, Math.sin(me.gp), Math.cos(me.gy) * cp] }); me.ammo--; me.cd = gun.cd; }
+      }
+    }
+  }
+  IN.lx = IN.ly = 0;
+  for (let i = 0; i < CALLOUTS.length; i++) if (P['Digit' + (i + 1)]) sendEv({ k: 'call', i });
+}
+function chaseHud(dt) {
+  const S = G.S, c = S.chase, p = myP(), W = hc.width = innerWidth, Hh = hc.height = innerHeight, driving = p && c.driver === me.id;
+  g2.clearRect(0, 0, W, Hh);
+  if (!driving) { g2.strokeStyle = 'rgba(255,255,255,.9)'; g2.lineWidth = 2; g2.beginPath(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g2.moveTo(W / 2 + dx * 7, Hh / 2 + dy * 7); g2.lineTo(W / 2 + dx * 15, Hh / 2 + dy * 15); } g2.stroke();
+    if (G.hitT > 0) { G.hitT -= dt; g2.strokeStyle = '#ff4040'; g2.beginPath(); for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { g2.moveTo(W / 2 + dx * 6, Hh / 2 + dy * 6); g2.lineTo(W / 2 + dx * 13, Hh / 2 + dy * 13); } g2.stroke(); } }
+  if (G.hurtT > 0) { G.hurtT -= dt; const gr = g2.createRadialGradient(W / 2, Hh / 2, Hh * .3, W / 2, Hh / 2, Hh * .8); gr.addColorStop(0, 'rgba(180,0,0,0)'); gr.addColorStop(1, `rgba(180,0,0,${G.hurtT})`); g2.fillStyle = gr; g2.fillRect(0, 0, W, Hh); }
+  G.hudT = (G.hudT || 0) - dt; if (G.hudT > 0) return; G.hudT = .12;
+  const left = Math.max(0, Math.round(CHASE.goal - c.z)), drv = S.pl.find(q => q.id === c.driver), cops = c.cars.filter(k => k.k === 'cop' && !k.st).length, gun = p ? gunOf(p) : null;
+  const block = c.cars.find(k => k.k === 'block' && !k.st && k.z > c.z);
+  hud.innerHTML = `
+    <div class="banner ${S.over ? (S.over.ok ? 'good' : 'bad') : 'bad'}">${S.over ? (S.over.ok ? 'CLEAN AWAY' : 'WRECKED') : 'GETAWAY — ' + left.toLocaleString('en-US') + ' m TO THE HOLLAND TUNNEL · ' + cops + ' on your tail'}<span class="det"><i style="width:${c.z / CHASE.goal * 100}%;background:var(--green)"></i></span></div>
+    ${block ? `<div class="down" style="top:22%;font-size:30px">ROADBLOCK ${Math.round(block.z - c.z)} m<small>find the gap</small></div>` : ''}
+    <div class="feed" style="top:70px">${G.feed.map(f => `<div class="${f.c}" style="opacity:${clamp(f.t / 2, 0, 1)}">${esc(f.s)}</div>`).join('')}</div>
+    <div class="crew">${S.pl.filter(q => q.dn !== 2).map(q => `<div><b style="color:${CREW[q.ch % 4].color}">${esc(q.name)}</b> <em>${q.id === c.driver ? 'DRIVING' : 'gunner' + (q.bot ? ' · AI' : '')}</em></div>`).join('')}</div>
+    <div class="me"><div class="take">${money(S.take)}<small>riding in the back</small></div>
+      <div class="bars"><span class="hp big"><i style="width:${c.hp / c.max * 100}%;background:${c.hp / c.max < .35 ? 'var(--red)' : 'var(--gold)'}"></i></span></div>
+      <div class="gun">The van · ${Math.round(c.v * 2.24)} mph</div>
+      <div class="abil">${driving ? 'YOU DRIVE' : gun ? esc(gun.name) + ' <b>' + (me.reload > 0 ? 'reloading' : me.ammo + ' / ' + gun.mag) + '</b>' : ''}</div></div>
+    <div class="keys">${driving ? (G.usePad ? 'Left stick steer · RT floor it · LT brake' : 'A / D steer · W floor it · S brake — dodge traffic, thread the roadblocks, let them hit the taxis') : (G.usePad ? 'Right stick aim · RT fire · Ⓧ reload' : 'Mouse aim · click fire · R reload — shoot the cruisers off ' + esc(drv ? drv.name : 'the driver') + "'s tail")}</div>
+    ${p && p.dn === 2 ? '<div class="down">IN CUFFS<small>The crew left without you</small></div>' : ''}`;
+  pauseUi(S);
 }
 
 // ------------------------------------------------------------------ HUD
@@ -286,8 +344,7 @@ function drawHud(dt) {
     ${p.dn === 1 ? `<div class="down">YOU'RE DOWN<small>A partner has ${Math.ceil(p.dnT)}s to get you up</small></div>` : p.dn === 2 ? '<div class="down">IN CUFFS<small>Watch the rest of the crew finish it</small></div>' : ''}
     ${G.tipNow ? `<div class="tip"><h4>${TIPS[G.tipNow][0]}</h4>${esc(TIPS[G.tipNow][1])}</div>` : ''}
 `;
-  const wantPause = !IN.locked && !S.over && !R.noDraw;
-  if (wantPause !== !!G.paused) { G.paused = wantPause; ui.className = wantPause ? 'pause' : ''; ui.innerHTML = wantPause ? `<div class="card pz"><h3>${G.started ? 'PAUSED' : esc(L.name.toUpperCase())}</h3><p class="dim">${G.role === 'guest' || G.role === 'host' ? 'The job keeps running for the crew.' : 'Solo jobs keep running too. Find a quiet corner.'}</p><button data-a="resume" class="big">${G.started ? 'Back to work' : 'Start — click to take control'}</button><button data-a="quit" class="ghost">${G.role === 'guest' ? 'Leave the crew' : 'Call off the job'}</button></div>` : ''; }
+  pauseUi(S);
 }
 
 // ------------------------------------------------------------------ menus
@@ -414,17 +471,20 @@ function step(now, draw) {
   const dt = Math.min(draw ? .05 : .12, (now - last) / 1000); last = now;
   if (G.phase === 'heist' && G.S) {
     const S = G.S;
-    if (draw) control(dt); else { const p = myP(); if (p) p.it = null; }
+    const ensureChase = () => { if (S.chase && !G.chaseOn) { G.chaseOn = true; buildChase(); me.drive = null; me.gy = Math.PI; me.gp = -.06; } };
+    ensureChase();
+    if (S.chase) { if (draw) chaseControl(dt); } else if (draw) control(dt); else { const p = myP(); if (p) p.it = null; }
     if (G.role !== 'guest') {
       update(S, dt);
       me.snapT -= dt; if (me.snapT <= 0) { me.snapT = 1 / 12; if (G.role === 'host') netSend('{"t":"snap","s":' + snapshot(S) + '}'); takeEvents(S); }
     } else S.t += dt;
     for (const f of G.feed) f.t -= dt; G.feed = G.feed.filter(f => f.t > 0);
     music(S.loud ? 'loud' : 'stealth');
-    if (draw) { renderFrame(S, me, dt, camS); drawHud(dt); }
+    ensureChase();
+    if (draw) { if (S.chase) { renderChase(S, me, dt, G.cview || {}); chaseHud(dt); } else { renderFrame(S, me, dt, camS); drawHud(dt); } }
     if (S.over) {
       if (!G.rewarded) { G.rewarded = true; reward(); sfx(S.over.ok ? 'win' : 'lose'); if (G.role === 'host') netSend('{"t":"snap","s":' + snapshot(S) + '}'); }
-      G.overT += dt; if (G.overT > 3) { G.paused = undefined; G.phase = 'result'; document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
+      G.overT += dt; if (G.overT > 3) { G.paused = undefined; if (G.chaseOn) { G.chaseOn = false; buildScene(); } G.phase = 'result'; document.exitPointerLock && document.exitPointerLock(); music('menu'); render(); }
     }
   } else if (R.scene && draw) menuFrame(dt);
   IN.pressed = {};

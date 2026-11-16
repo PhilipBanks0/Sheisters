@@ -7,7 +7,7 @@ const T = window.THREE;
 export const R = { scene: null, cam: null, gl: null, chars: new Map(), fx: [], t: 0 };
 const tex = {}, mats = {};
 
-function canvasTex(w, h, draw, rep) {
+export function canvasTex(w, h, draw, rep) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
   const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4; if (rep) t.repeat.set(rep, rep); return t;
 }
@@ -32,7 +32,7 @@ function makeTextures() {
   tex.boxes = canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#7c8288'; g.fillRect(0, 0, w, h); for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { g.fillStyle = '#9aa1a8'; g.fillRect(x * 32 + 2, y * 32 + 2, 28, 28); g.fillStyle = '#c9a646'; g.fillRect(x * 32 + 12, y * 32 + 13, 8, 6); } });
   tex.windows = canvasTex(256, 512, (g, w, h) => { g.fillStyle = '#000'; g.fillRect(0, 0, w, h); for (let y = 0; y < 16; y++) for (let x = 0; x < 8; x++) if (Math.random() < .3) { g.fillStyle = ['#ffd98a', '#ffe9b8', '#9fc8ff', '#ffb46a'][Math.floor(Math.random() * 4)]; g.globalAlpha = .35 + Math.random() * .65; g.fillRect(x * 32 + 8, y * 32 + 8, 16, 18); } });
 }
-function M(name) {
+export function M(name) {
   if (mats[name]) return mats[name];
   const S = (o) => (o.roughness === undefined || o.roughness >= .8) && !o.emissiveMap ? new T.MeshLambertMaterial({ map: o.map, color: o.color === undefined ? 0xffffff : o.color }) : new T.MeshStandardMaterial(o);
   const d = {
@@ -69,7 +69,7 @@ function mergedBoxes(list, mat, uvScale) {
   g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
   const m = new T.Mesh(g, mat); m.castShadow = m.receiveShadow = true; return m;
 }
-function label(text, w, h, font, col, glow) {
+export function label(text, w, h, font, col, glow) {
   const t = canvasTex(w, h, (g) => { g.clearRect(0, 0, w, h); g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = glow; g.shadowBlur = 18; g.fillStyle = col; g.fillText(text, w / 2, h / 2); g.fillText(text, w / 2, h / 2); });
   t.wrapS = t.wrapT = T.ClampToEdgeWrapping; return new T.MeshBasicMaterial({ map: t, transparent: true, fog: false, depthWrite: false });
 }
@@ -144,7 +144,7 @@ export function buildScene() {
   R.readers = [];
   for (const it of L.inter) if (it.type === 'reader') { const m = new T.Mesh(new T.BoxGeometry(.08, .3, .2), new T.MeshStandardMaterial({ color: 0x222222, emissive: 0xff2020, emissiveIntensity: 1 })); m.position.set(-4.82, -2.6, it.z); sc.add(m); R.readers.push(m); }
 }
-function glow(pos, col, size) { const s = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: .5, depthWrite: false, blending: T.AdditiveBlending })); s.scale.set(size, size, 1); s.position.copy(pos); R.scene.add(s); return s; }
+export function glow(pos, col, size) { const s = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: .5, depthWrite: false, blending: T.AdditiveBlending })); s.scale.set(size, size, 1); s.position.copy(pos); R.scene.add(s); return s; }
 let _glow; function glowTex() { return _glow || (_glow = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); })); }
 
 // ------------------------------------------------------------------ characters

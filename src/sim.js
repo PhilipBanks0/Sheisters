@@ -255,6 +255,7 @@ function npcShoot(S, n, p, dmg) {
 // ------------------------------------------------------------------ host: player events
 export function playerEvent(S, p, e) {
   if (S.over || !p) return;
+  if (S.chase) return chaseEvent(S, p, e);
   if (e.k === 'call') { const c = CALLOUTS[e.i]; if (c) ev(S, { k: 'say', p: p.id, s: c[1][p.ch % 4], call: c[0] }); return; }
   if (e.k === 'ping') {
     S.pings.push({ x: e.x, y: e.y, z: e.z, by: p.id, t: S.t + 9, n: e.n === undefined ? -1 : e.n });
@@ -342,7 +343,7 @@ function interDone(S, it, info, p) {
     case 'safe': S.used.safe = 1; for (const b of S.bags) if (b.st === 3) b.st = 0; msg(S, p.name + ' cracked the safe. Bag the stones!', 'good'); sfx(S, 'vault', it); break;
     case 'van':
       if (p.bags > 0) { for (const b of S.bags) if (b.st === 1 && b.by === p.id) { b.st = 2; b.by = -1; S.take += b.v; p.stat.bags++; ev(S, { k: 'cash', v: b.v, x: it.x, y: 1.5, z: it.z }); } p.bags = 0; sfx(S, 'cash', it); }
-      else finish(S, true, S.take > 0 ? 'Clean getaway.' : 'You walked away empty-handed.');
+      else if (S.loud) startChase(S, p); else finish(S, true, S.take > 0 ? 'Clean getaway.' : 'You walked away empty-handed.');
       break;
     case 'guard':
       if (info.pick) { it.n.card = 0; S.cards.a = p.id; msg(S, p.name + " lifted a keycard off " + it.n.nm + '.', 'good'); sfx(S, 'card', it); }
@@ -370,6 +371,7 @@ function finish(S, ok, why) {
 // ------------------------------------------------------------------ host: main update
 export function update(S, dt) {
   if (S.over) return;
+  if (S.chase) return chaseUpdate(S, dt);
   const h = H.get(S); S.t += dt; h.tick += dt;
   const slow = h.tick >= .1; if (slow) h.tick = 0;                 // sight checks run at 10 Hz
   const sdt = .1;
@@ -577,6 +579,100 @@ function botUpdate(S, h, p, dt) {
     if (b.cd <= 0) { b.cd = .5 + Math.random() * .4; p.sh = S.t; const hit = Math.random() < .55;
       ev(S, { k: 'shot', a: [p.x, p.y + 1.4, p.z], b: [tgt.x, tgt.y + 1.2 + (hit ? 0 : 1), tgt.z], w: p.cls, p: p.id }); if (hit) hurtNpc(S, tgt, 16, p); }
   }
+}
+
+// ------------------------------------------------------------------ the getaway chase
+// Chase space: X across the avenue (-9..9), Z distance driven. One player drives, everyone else shoots.
+export const CHASE = { goal: 1900, half: 8, blocks: [650, 1150, 1600] };
+const CARSTAT = { van: [100, 26], bruiser: [130, 30], suv: [200, 28] };
+function startChase(S, p) {
+  const st = CARSTAT[S.car] || CARSTAT.van;
+  S.chase = { z: 0, x: 2.2, v: 14, top: st[1], hp: st[0], max: st[0], driver: p.id, cars: [], t: 0, nid: 1, spawn: 3, civ: 0, blk: 0, hit: 0 };
+  for (const q of S.pl) { q.it = null; q.mv = 0; q.bags = 0; q.body = -1; }
+  const h = H.get(S); h.chase = { cd: {}, bot: {} };
+  msg(S, p.name + ' is behind the wheel. Lose them before the Holland Tunnel!', 'warn'); sfx(S, 'siren');
+}
+function chaseEvent(S, p, e) {
+  const c = S.chase;
+  if (e.k === 'call') { const k = CALLOUTS[e.i]; if (k) ev(S, { k: 'say', p: p.id, s: k[1][p.ch % 4], call: k[0] }); return; }
+  if (p.dn) return;
+  if (e.k === 'drive' && p.id === c.driver) { c.x = clamp(+e.x || 0, -CHASE.half, CHASE.half); c.v = clamp(+e.v || 0, 6, c.top + 9); return; }
+  if (e.k === 'shot' && p.id !== c.driver) {
+    const G = gunOf(p), n = G.pellets || 1; let dl = Math.hypot(e.d[0], e.d[1], e.d[2]) || 1; const D = e.d.map(v => v / dl);
+    for (let i = 0; i < n; i++) {
+      const d = [D[0] + (Math.random() - .5) * G.spread * 2, D[1] + (Math.random() - .5) * G.spread * 2, D[2] + (Math.random() - .5) * G.spread * 2];
+      let best = 70, victim = null;
+      for (const car of c.cars) { if (car.k !== 'cop' || car.st) continue; const t = rayBox(e.o, d, car.x - 1.15, 0, car.z - 2.4, car.x + 1.15, 1.7, car.z + 2.4); if (t < best) { best = t; victim = car; } }
+      ev(S, { k: 'shot', a: e.o, b: [e.o[0] + d[0] * best, e.o[1] + d[1] * best, e.o[2] + d[2] * best], w: G.snd || p.cls, p: p.id, hit: victim ? 1 : 0 });
+      if (victim) wreck(S, victim, G.dmg, p);
+    }
+  }
+}
+function rayBox(o, d, x0, y0, z0, x1, y1, z1) {
+  let t0 = 0, t1 = 70; const lo = [x0, y0, z0], hi = [x1, y1, z1];
+  for (let i = 0; i < 3; i++) { if (Math.abs(d[i]) < 1e-9) { if (o[i] < lo[i] || o[i] > hi[i]) return 99; continue; } let a = (lo[i] - o[i]) / d[i], b = (hi[i] - o[i]) / d[i]; if (a > b) { const s = a; a = b; b = s; } if (a > t0) t0 = a; if (b < t1) t1 = b; if (t0 > t1) return 99; }
+  return t0;
+}
+function wreck(S, car, dmg, by) {
+  car.hp -= dmg; if (car.hp > 0 || car.st) return;
+  car.st = 1; car.spin = (Math.random() < .5 ? -1 : 1) * (2 + Math.random() * 2); if (by) by.stat.kills++;
+  sfx(S, 'smash', { x: car.x, y: 1, z: car.z }); if (by) msg(S, by.name + ' put a cruiser into the wall!', 'good');
+}
+function chaseUpdate(S, dt) {
+  const c = S.chase, h = H.get(S).chase; S.t += dt; c.t += dt;
+  const drv = S.pl.find(p => p.id === c.driver);
+  // nobody at the wheel (AI partner, dropped player): keep it between the lines and dodge
+  if (!drv || drv.bot || drv.left || drv.dn) {
+    let want = c.x, bestClear = -1;
+    for (const lx of [-6.6, -2.3, 2.3, 6.6]) { let clear = 90; for (const car of c.cars) { if (car.k === 'cop' || car.st) continue; const dz = car.z - c.z - (car.v < 0 ? 12 : 0); if (dz > -4 && dz < clear && Math.abs(car.x - lx) < 2.4) clear = dz; } clear -= Math.abs(lx - c.x) * 1.5; if (clear > bestClear) { bestClear = clear; want = lx; } }
+    c.x += clamp(want - c.x, -8 * dt, 8 * dt); c.x = clamp(c.x, -CHASE.half, CHASE.half); c.v += (c.top - c.v) * dt;
+  }
+  c.z += c.v * dt; c.hit = Math.max(0, c.hit - dt);
+  const guns = S.pl.some(p => p.id !== c.driver && !p.dn && !p.left);
+  const prog = c.z / CHASE.goal, hurt = (d, why) => { c.hp -= d; c.hit = .4; ev(S, { k: 'hurt', p: -1, all: 1 }); sfx(S, why || 'thud'); };
+  // traffic
+  c.civ -= dt;
+  if (c.civ <= 0 && c.cars.filter(k => k.k === 'civ').length < 9) {
+    c.civ = .55 + Math.random() * .5; const on = Math.random() < .4, x = on ? [-6.6, -2.3][Math.floor(Math.random() * 2)] : [2.3, 6.6][Math.floor(Math.random() * 2)];
+    c.cars.push({ id: c.nid++, k: 'civ', x, z: c.z + 130 + Math.random() * 50, v: on ? -(10 + Math.random() * 5) : 11 + Math.random() * 6, hp: 1, st: 0, col: Math.floor(Math.random() * 5) });
+  }
+  // roadblocks: two cruisers across three lanes, one gap
+  if (c.blk < CHASE.blocks.length && c.z > CHASE.blocks[c.blk] - 170) {
+    const gap = Math.floor(Math.random() * 4), lanes = [-6.6, -2.3, 2.3, 6.6];
+    lanes.forEach((x, i) => { if (i !== gap) c.cars.push({ id: c.nid++, k: 'block', x, z: CHASE.blocks[c.blk], v: 0, hp: 1, st: 0 }); });
+    c.blk++; msg(S, 'Roadblock ahead! Find the gap!', 'bad'); sfx(S, 'siren');
+  }
+  // pursuit
+  c.spawn -= dt;
+  const cops = c.cars.filter(k => k.k === 'cop' && !k.st).length;
+  if (c.spawn <= 0 && cops < (guns ? 2 : 1) + Math.floor(prog * (guns ? 3 : 2))) { c.spawn = Math.max(2.2, 5 - prog * 3); c.cars.push({ id: c.nid++, k: 'cop', x: [-6.6, -2.3, 2.3, 6.6][Math.floor(Math.random() * 4)], z: c.z - 50, v: c.v + 8, hp: 110, st: 0, side: Math.random() < .5 ? -1 : 1, cd: 2 }); }
+  for (const car of c.cars) {
+    if (car.st) { car.v *= 1 - 1.6 * dt; car.x = clamp(car.x + car.spin * dt * 2, -9.5, 9.5); car.st += dt; car.z += car.v * dt; continue; }
+    if (car.k === 'cop') {
+      const dz = c.z - car.z, tx = dz > 7 ? car.x : c.x + car.side * 2.5;      // hang back in lane, then come alongside
+      const tv = dz > 5 ? c.v + 9 : dz < -3 ? c.v - 6 : c.v + (dz - 1) * 1.5;
+      car.v += clamp(tv - car.v, -14 * dt, 10 * dt); car.x += clamp((dz > 7 ? c.x : tx) - car.x, -5.5 * dt, 5.5 * dt);
+      car.cd -= dt;
+      if (Math.abs(dz) < 30 && car.cd <= 0) { car.cd = 1.1 + Math.random(); const hit = Math.random() < .35;
+        ev(S, { k: 'shot', a: [car.x, 1.3, car.z + 1], b: [c.x + (hit ? 0 : 2), 1.4, c.z - 2], w: 'cop' }); if (hit) hurt(1.5, 'hurt'); }
+      if (Math.abs(dz) < 5 && Math.abs(car.x - c.x) < 2.15) { hurt(guns ? 5 : 3); car.v = c.v - 9; car.x += car.x > c.x ? 1.2 : -1.2; car.side *= -1; sfx(S, 'thud'); }
+      for (const o of c.cars) if (o !== car && !o.st && o.k !== 'cop' && Math.abs(o.z - car.z) < 4.6 && Math.abs(o.x - car.x) < 2) { wreck(S, car, 999); if (o.k === 'civ') { o.st = 1; o.spin = 1; } break; }
+    }
+    car.z += car.v * dt;
+    if (car.k !== 'cop' && Math.abs(car.z - c.z) < 5 && Math.abs(car.x - c.x) < 2.1) {
+      hurt(car.k === 'block' ? 16 : 8, 'smash'); c.v *= car.k === 'block' ? .35 : .55; car.st = 1; car.spin = car.x > c.x ? 3 : -3; car.v = c.v;
+      msg(S, car.k === 'block' ? 'Straight through the roadblock!' : 'Watch the traffic!', 'bad');
+    }
+  }
+  c.cars = c.cars.filter(k => k.z > c.z - 70 && k.z < c.z + 260 && !(k.st > 3.5));
+  // AI partners ride shotgun
+  for (const p of S.pl) {
+    if (!p.bot || p.dn) continue; h.bot[p.id] = (h.bot[p.id] || 1) - dt; if (h.bot[p.id] > 0) continue; h.bot[p.id] = .55 + Math.random() * .4;
+    let t = null, bd = 38; for (const car of c.cars) if (car.k === 'cop' && !car.st) { const d = Math.hypot(car.x - c.x, car.z - c.z); if (d < bd) { bd = d; t = car; } }
+    if (t) { const hit = Math.random() < .5; ev(S, { k: 'shot', a: [c.x, 1.7, c.z - 2.6], b: [t.x, hit ? 1 : 2.6, t.z], w: p.cls, p: p.id }); if (hit) wreck(S, t, 16, p); }
+  }
+  if (c.hp <= 0) { c.hp = 0; finish(S, false, 'They ran you off the road three blocks from the tunnel.'); }
+  else if (c.z >= CHASE.goal) finish(S, true, 'You lost them in the Holland Tunnel.');
 }
 
 export const snapshot = S => JSON.stringify(S, (k, v) => typeof v === 'number' ? Math.round(v * 100) / 100 : v);
